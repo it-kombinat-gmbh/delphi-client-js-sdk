@@ -1,0 +1,85 @@
+{
+  "name": "@ki-kombinat/delphi-client-js-sdk",
+  "version": "0.1.0",
+  "description": "Session-first SDK for the Delphi voice-AI platform. Read-aloud, browser actions, text chat, and full WebRTC voice calls through one unified API. Zero runtime dependencies in the core; optional React bindings.",
+  "keywords": [
+    "delphi",
+    "telapi",
+    "telphi",
+    "ki-kombinat",
+    "voice-ai",
+    "voice-agent",
+    "webrtc",
+    "softphone",
+    "sip",
+    "websocket",
+    "tts",
+    "react",
+    "headless"
+  ],
+  "homepage": "https://github.com/it-kombinat-gmbh/delphi-client-js-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/it-kombinat-gmbh/delphi-client-js-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/it-kombinat-gmbh/delphi-client-js-sdk.git"
+  },
+  "license": "MIT",
+  "author": "Ki-Kombinat",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.mjs",
+      "require": "./dist/react/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "format": "prettier --check . --ignore-path ../../.gitignore",
+    "lint": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
+    "lint:fix": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --fix --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "react": "19.2.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}

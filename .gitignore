@@ -1,0 +1,22 @@
+# Built by `pnpm build` / CI / Docker — source is under src/
+dist/
+
+# Turbo (also in repo root .gitignore)
+.turbo/
+
+# Local install / eslint cache when not hoisted to repo root
+node_modules/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Local env files (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
