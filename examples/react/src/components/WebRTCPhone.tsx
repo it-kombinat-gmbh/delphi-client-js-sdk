@@ -195,7 +195,6 @@ export function WebRTCPhone() {
                             Call
                         </button>
                     </div>
-
                 </div>
             )}
 

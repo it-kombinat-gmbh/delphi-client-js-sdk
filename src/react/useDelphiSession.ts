@@ -13,14 +13,15 @@ import type {
     StatusPayload,
 } from '../core/channelTypes'
 import type {
-    SessionClient, SessionState,
+    SessionClient,
+    SessionState,
     ActionHandler,
     ActionResult,
     AsyncActionResult,
     BrowserAudioEvent,
     MessageHandler,
     SessionConnectionState,
-    SyncActionResult
+    SyncActionResult,
 } from '../core/SessionClient'
 import type { SessionMode } from '../core/types'
 
@@ -131,7 +132,7 @@ const IDLE_RETURN: Omit<UseDelphiSessionReturn, 'session'> = {
     sendMessage: () => false,
     audioDone: () => Promise.reject(new Error('No active session')),
     close: () => Promise.resolve(),
-    clearMessages: () => { },
+    clearMessages: () => {},
 }
 
 /**
@@ -178,10 +179,7 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
     // would surface stale `messages` / `connectionState`. Going through
     // `delphi.getSession()` on every notification keeps us aligned with the
     // current session map.
-    const subscribeToDelphi = useCallback(
-        (cb: () => void) => delphi.subscribe(cb),
-        [delphi],
-    )
+    const subscribeToDelphi = useCallback((cb: () => void) => delphi.subscribe(cb), [delphi])
     const getSessionFromDelphi = useCallback(
         () => (endpointId ? delphi.getSession(endpointId) : null),
         [delphi, endpointId],
@@ -198,11 +196,9 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
     useEffect(() => {
         if (!endpointId) return
         if (session) return
-        void delphi
-            .openSession({ endpointId, mode, endpointName, appName })
-            .catch((e: unknown) => {
-                onError?.(e instanceof Error ? e : new Error(String(e)))
-            })
+        void delphi.openSession({ endpointId, mode, endpointName, appName }).catch((e: unknown) => {
+            onError?.(e instanceof Error ? e : new Error(String(e)))
+        })
     }, [delphi, endpointId, mode, endpointName, appName, onError, session])
 
     // Keep session callbacks in sync with the latest props
@@ -253,7 +249,7 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
         [],
     )
     const subscribe = useCallback(
-        (cb: () => void) => (session ? session.subscribe(cb) : () => { }),
+        (cb: () => void) => (session ? session.subscribe(cb) : () => {}),
         [session],
     )
     const getSnapshot = useCallback(

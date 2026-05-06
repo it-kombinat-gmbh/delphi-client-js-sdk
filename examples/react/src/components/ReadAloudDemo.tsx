@@ -139,8 +139,8 @@ export function ReadAloudDemo() {
                 </summary>
                 <ol className="mt-2 ml-4 list-decimal space-y-1">
                     <li>
-                        SDK calls{' '}
-                        <code className="font-mono">POST /api/v1/sessions/token</code> with{' '}
+                        SDK calls <code className="font-mono">POST /api/v1/sessions/token</code>{' '}
+                        with{' '}
                         <code className="font-mono">
                             &#123; endpointId, mode: 'audio_playback' &#125;
                         </code>
@@ -162,9 +162,9 @@ export function ReadAloudDemo() {
                         <code className="font-mono">new Audio()</code>.
                     </li>
                     <li>
-                        Subsequent calls for the same{' '}
-                        <code className="font-mono">endpointId</code> reuse the session (one WS,
-                        one conversation thread) until the 5-minute idle timer fires.
+                        Subsequent calls for the same <code className="font-mono">endpointId</code>{' '}
+                        reuse the session (one WS, one conversation thread) until the 5-minute idle
+                        timer fires.
                     </li>
                 </ol>
             </details>

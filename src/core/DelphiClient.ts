@@ -10,17 +10,9 @@ import type {
     RuntimeInteractionMode,
     SessionMode,
 } from './types'
-import {
-    SessionClient,
-    type SessionOptions,
-    type BrowserAudioEvent,
-} from './SessionClient'
+import { SessionClient, type SessionOptions, type BrowserAudioEvent } from './SessionClient'
 import { randomString } from './utils'
-import {
-    saveSessionState,
-    loadSessionState,
-    clearSessionState,
-} from './utils/sessionState'
+import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionState'
 import { playDtmfTone } from './utils/playDtmfTone'
 import { setLogger, logDebug, logger } from './utils/sdkLogger'
 import { setAudioCodecPreferences } from './utils/setAudioCodecPreferences'
@@ -244,10 +236,7 @@ export class DelphiClient {
      * Hits `POST {apiDomain}/api/v1/sessions/token` (or `sessionTokenUrl` if
      * configured for same-origin proxying).
      */
-    async getSessionToken(
-        endpointId: string,
-        mode: SessionMode,
-    ): Promise<SessionTokenResponse> {
+    async getSessionToken(endpointId: string, mode: SessionMode): Promise<SessionTokenResponse> {
         const { apiDomain, apiKey, sessionTokenUrl } = this._config
 
         if (!sessionTokenUrl && !apiDomain) throw new Error('apiDomain not configured')
@@ -293,8 +282,7 @@ export class DelphiClient {
         if (!runtimeCapabilitiesUrl && !apiDomain) throw new Error('apiDomain not configured')
         if (!runtimeCapabilitiesUrl && !apiKey) throw new Error('apiKey not configured')
 
-        const baseUrl =
-            runtimeCapabilitiesUrl || `https://${apiDomain}/api/v1/runtime/capabilities`
+        const baseUrl = runtimeCapabilitiesUrl || `https://${apiDomain}/api/v1/runtime/capabilities`
         const separator = baseUrl.includes('?') ? '&' : '?'
         const url = `${baseUrl}${separator}endpointId=${encodeURIComponent(endpointId)}`
 
@@ -523,14 +511,11 @@ export class DelphiClient {
         return audioPromise
     }
 
-    private async _getDefaultReadAloudCapability(endpointId: string): Promise<
-        | {
-              id: string
-              slug: string
-              messageType: string
-          }
-        | null
-    > {
+    private async _getDefaultReadAloudCapability(endpointId: string): Promise<{
+        id: string
+        slug: string
+        messageType: string
+    } | null> {
         const capabilities = await this.assertEndpointCapability(endpointId, 'audio_playback')
         const capability = capabilities.flows.browserActions.find(
             (action) => action.type === 'readAloud',
@@ -791,12 +776,14 @@ export class DelphiClient {
             logDebug('Not registered yet — queuing reconnect until WebRTC + SIP are ready')
             this._pendingReconnect = state
             if (!this._state.voiceCall.initialized && !this._webrtc.initializing) {
-                this._initWebRTCGateway(state.telproDomain, state.webrtcGatewayUrl).catch((error) => {
-                    this._pendingReconnect = null
-                    const errMsg = error instanceof Error ? error.message : 'Unknown'
-                    this._setStatus(`Reconnect failed: ${errMsg}`)
-                    this._setVoiceState({ reconnecting: false })
-                })
+                this._initWebRTCGateway(state.telproDomain, state.webrtcGatewayUrl).catch(
+                    (error) => {
+                        this._pendingReconnect = null
+                        const errMsg = error instanceof Error ? error.message : 'Unknown'
+                        this._setStatus(`Reconnect failed: ${errMsg}`)
+                        this._setVoiceState({ reconnecting: false })
+                    },
+                )
             }
             return
         }
@@ -942,7 +929,9 @@ export class DelphiClient {
             return
         }
         if (gw.initialized && !this._state.voiceCall.registered) {
-            logDebug('WebRTC gateway initialized without SIP registration, tearing down and retrying')
+            logDebug(
+                'WebRTC gateway initialized without SIP registration, tearing down and retrying',
+            )
             this._teardownWebRTC()
         }
         if (!telproDomain) {
@@ -1110,8 +1099,7 @@ export class DelphiClient {
                 // Buffer the stream even if the audio element hasn't mounted
                 // yet — `setRemoteAudioElement` and `_tryPlayAudio` will
                 // pick it up when it appears.
-                this._media.remoteStream =
-                    event.streams[0] ?? new MediaStream([event.track])
+                this._media.remoteStream = event.streams[0] ?? new MediaStream([event.track])
                 void this._tryPlayAudio()
             }
 
@@ -1182,9 +1170,7 @@ export class DelphiClient {
 
             const remaining = attempt - 1
             if (remaining > 0) {
-                logDebug(
-                    `Retrying call setup after failure (${remaining} attempt(s) left)`,
-                )
+                logDebug(`Retrying call setup after failure (${remaining} attempt(s) left)`)
                 await new Promise((r) => setTimeout(r, 1000))
                 void this._dial(remaining)
             }
@@ -1208,11 +1194,7 @@ export class DelphiClient {
             })
             await pc.setLocalDescription(offer)
 
-            if (
-                this._webrtc.ws &&
-                this._webrtc.gatewaySessionId &&
-                this._webrtc.gatewayHandleId
-            ) {
+            if (this._webrtc.ws && this._webrtc.gatewaySessionId && this._webrtc.gatewayHandleId) {
                 await this._sendGatewayRequest({
                     janus: 'message',
                     body: { request: 'update' },
@@ -1265,8 +1247,7 @@ export class DelphiClient {
 
             pc.ontrack = (event) => {
                 logDebug('[Reconnect] Remote track:', event.track.kind)
-                this._media.remoteStream =
-                    event.streams[0] ?? new MediaStream([event.track])
+                this._media.remoteStream = event.streams[0] ?? new MediaStream([event.track])
                 void this._tryPlayAudio()
             }
             pc.oniceconnectionstatechange = () => {
@@ -1379,9 +1360,7 @@ export class DelphiClient {
      * Wraps the gateway-specific transaction id / session id / handle id
      * fields so callers only have to specify the high-level intent.
      */
-    private _sendGatewayRequest(
-        msg: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> {
+    private _sendGatewayRequest(msg: Record<string, unknown>): Promise<Record<string, unknown>> {
         return new Promise((resolve, reject) => {
             const ws = this._webrtc.ws
             if (!ws || ws.readyState !== WebSocket.OPEN) {

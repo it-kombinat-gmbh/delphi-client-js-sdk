@@ -1,6 +1,6 @@
 # @ki-kombinat/delphi-client-js-sdk
 
-[![npm version](https://img.shields.io/npm/v/@ki-kombinat/delphi-client-js-sdk.svg)](https://www.npmjs.com/package/@ki-kombinat/delphi-client-js-sdk)
+[![npm version](https://img.shields.io/npm/v/@ki-kombinat/delphi-client-js-sdk.svg)](https://www.npmjs.com/package/@kikombinat.com/delphi-client-js-sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Headless TypeScript SDK for the **Delphi voice-AI platform**. Open AI-runtime

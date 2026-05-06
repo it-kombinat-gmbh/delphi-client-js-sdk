@@ -638,9 +638,7 @@ export class SessionClient {
 
                 if (this._lastStreamId && this._sessionId) {
                     ws.send(
-                        JSON.stringify(
-                            createReconnectMessage(this._sessionId, this._lastStreamId),
-                        ),
+                        JSON.stringify(createReconnectMessage(this._sessionId, this._lastStreamId)),
                     )
                 }
 

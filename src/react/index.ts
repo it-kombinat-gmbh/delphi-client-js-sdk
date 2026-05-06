@@ -10,10 +10,7 @@ export type { DelphiClientProviderProps } from './context'
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 export { useDelphiClientState, useDelphiClient } from './useDelphiClient'
 export { useDelphiSession } from './useDelphiSession'
-export type {
-    UseDelphiSessionOptions,
-    UseDelphiSessionReturn,
-} from './useDelphiSession'
+export type { UseDelphiSessionOptions, UseDelphiSessionReturn } from './useDelphiSession'
 export { useBrowserAction } from './useBrowserAction'
 export type { ExecuteBrowserActionOptions, BrowserActionHandler } from '../core/browserActions'
 export { useSelectionTracking } from './useSelectionTracking'
