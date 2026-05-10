@@ -2,6 +2,8 @@
 // Shared primitive types
 // =========================================================================
 
+import type { BrowserContext } from './channelTypes'
+
 export type IceServer = {
     urls: string | string[]
     username?: string
@@ -32,8 +34,14 @@ export interface Logger {
  * - `voice_conversation` — full WebRTC two-way voice call (gateway + SIP leg).
  *   Audio is delivered via the SIP leg, not over the channel.
  * - `browser_actions` — pure BOA dispatch (no AI conversation).
+ * - `listen` — subscribe to a TelPhi-produced interpretation stream.
  */
-export type SessionMode = 'text' | 'audio_playback' | 'voice_conversation' | 'browser_actions'
+export type SessionMode =
+    | 'text'
+    | 'audio_playback'
+    | 'voice_conversation'
+    | 'browser_actions'
+    | 'listen'
 
 // =========================================================================
 // Config
@@ -165,11 +173,30 @@ export interface ReadAloudOptions {
     disableAutoPlay?: boolean
 }
 
+export interface ListenOptions {
+    endpointId: string
+    identifier: string
+    targetLanguage: string
+    scope?: string
+    startMode?: 'live' | 'from_beginning' | 'from_sequence' | 'closest_to_now'
+    sinceStreamId?: string
+    latencyOffsetMs?: number
+    includeCaptions?: boolean
+    capabilityId?: string
+    capabilitySlug?: string
+    messageType?: string
+}
+
 /** Parameters for `delphi.startCall()` (voice_conversation session + WebRTC). */
 export interface StartCallOptions {
     endpointId: string
     endpointName?: string
     appName?: string
+    /**
+     * Context sent on the session channel before auto-dial starts. Useful for
+     * flows that need identifiers/roles when the SIP leg enters TelPhi.
+     */
+    browserContext?: BrowserContext
     /** If `true`, dial as soon as the SIP plugin reports `registered`. Default `false`. */
     autoDial?: boolean
 }
@@ -205,7 +232,7 @@ export interface RuntimeCapabilities {
             id: string
             slug: string
             label: string
-            type: 'readAloud' | 'transformAndRead'
+            type: 'readAloud' | 'transformAndRead' | 'listen'
             messageType: string
             voiceInvocable: boolean
         }>

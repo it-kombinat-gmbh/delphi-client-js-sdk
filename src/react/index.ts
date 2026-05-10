@@ -29,6 +29,7 @@ export type {
     SyncActionResult,
     AsyncActionResult,
     BrowserAudioEvent,
+    ListenOptions as SessionListenOptions,
 } from '../core/SessionClient'
 
 export type {
@@ -41,6 +42,7 @@ export type {
     OpenSessionOptions,
     StartCallOptions,
     ReadAloudOptions,
+    ListenOptions,
     DelphiPhoneProps,
 } from '../core/types'
 

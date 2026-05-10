@@ -102,7 +102,11 @@ export interface ChatPayload {
 }
 
 export interface BrowserContext {
-    text: string
+    text?: string
+    identifier?: string
+    role?: 'speaker' | 'listener' | string
+    sourceLanguage?: string
+    targetLanguage?: string
     source?: string
     url?: string
     title?: string

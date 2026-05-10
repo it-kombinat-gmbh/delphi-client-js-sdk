@@ -19,6 +19,7 @@ import type {
     ActionResult,
     AsyncActionResult,
     BrowserAudioEvent,
+    ListenOptions,
     MessageHandler,
     SessionConnectionState,
     SyncActionResult,
@@ -35,6 +36,7 @@ export type {
     SyncActionResult,
     AsyncActionResult,
     BrowserAudioEvent,
+    ListenOptions,
     BrowserContext,
     BrowserSelectionContext,
     BrowserActionPayload,
@@ -67,6 +69,8 @@ export interface UseDelphiSessionReturn {
     session: SessionClient | null
     connectionState: SessionConnectionState
     connected: boolean
+    /** True once TelAPI has acknowledged and prepared the session channel. */
+    serverReady: boolean
     sessionId: string | null
     textChatEnabled: boolean
     messages: ChannelMessage[]
@@ -87,6 +91,7 @@ export interface UseDelphiSessionReturn {
     sendTextChat: (content: string, metadata?: Record<string, unknown>) => boolean
     sendReadAloud: (content: string, metadata?: Record<string, unknown>) => boolean
     sendBrowserAction: (payload: BrowserActionPayload) => boolean
+    listen: (options: ListenOptions) => boolean
     enableTextChat: (responseMode?: ResponseMode) => boolean
     disableTextChat: () => boolean
     setResponseMode: (responseMode: ResponseMode) => boolean
@@ -112,6 +117,7 @@ export interface UseDelphiSessionReturn {
 const IDLE_RETURN: Omit<UseDelphiSessionReturn, 'session'> = {
     connectionState: 'disconnected',
     connected: false,
+    serverReady: false,
     sessionId: null,
     textChatEnabled: false,
     messages: [],
@@ -123,6 +129,7 @@ const IDLE_RETURN: Omit<UseDelphiSessionReturn, 'session'> = {
     sendTextChat: () => false,
     sendReadAloud: () => false,
     sendBrowserAction: () => false,
+    listen: () => false,
     enableTextChat: () => false,
     disableTextChat: () => false,
     setResponseMode: () => false,
@@ -266,6 +273,7 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
             session,
             connectionState: state.connectionState,
             connected: state.connected,
+            serverReady: state.serverReady,
             sessionId: state.sessionId,
             textChatEnabled: state.textChatEnabled,
             messages: state.messages,
@@ -277,6 +285,7 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
             sendTextChat: session.sendTextChat.bind(session),
             sendReadAloud: session.sendReadAloud.bind(session),
             sendBrowserAction: session.sendBrowserAction.bind(session),
+            listen: session.listen.bind(session),
             enableTextChat: session.enableTextChat.bind(session),
             disableTextChat: session.disableTextChat.bind(session),
             setResponseMode: session.setResponseMode.bind(session),

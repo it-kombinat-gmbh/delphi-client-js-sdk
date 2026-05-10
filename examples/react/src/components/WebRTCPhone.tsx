@@ -5,7 +5,7 @@ import {
     useDelphiSession,
     useSelectionTracking,
     useBrowserAction,
-} from '@ki-kombinat/delphi-client-js-sdk/react'
+} from '../../../../src/react'
 
 /**
  * A fully functional headless WebRTC softphone UI built with Tailwind CSS.

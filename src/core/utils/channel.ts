@@ -312,7 +312,7 @@ export function createBrowserContextMessage(
         ...createBaseMessage('chat', sessionId, 'to_ari'),
         chat: {
             role: 'user',
-            content: browserContext.text,
+            content: browserContext.text ?? browserContext.identifier ?? '',
             intent: 'browser_context',
             responseExpected: false,
             metadata: {

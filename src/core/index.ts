@@ -22,6 +22,7 @@ export type {
     ActionHandler,
     MessageHandler,
     BrowserAudioEvent,
+    ListenOptions as SessionListenOptions,
 } from './SessionClient'
 
 // ── Browser actions (pure function — no React) ────────────────────────────────
@@ -50,6 +51,7 @@ export type {
     OpenSessionOptions,
     StartCallOptions,
     ReadAloudOptions,
+    ListenOptions,
     RuntimeCapabilities,
     RuntimeInteractionMode,
     RuntimeTransport,

@@ -71,6 +71,20 @@ export interface BrowserAudioEvent {
     metadata?: Record<string, unknown>
 }
 
+export interface ListenOptions {
+    identifier: string
+    targetLanguage: string
+    scope?: string
+    endpointId?: string
+    startMode?: 'live' | 'from_beginning' | 'from_sequence' | 'closest_to_now'
+    sinceStreamId?: string
+    latencyOffsetMs?: number
+    includeCaptions?: boolean
+    capabilityId?: string
+    capabilitySlug?: string
+    messageType?: string
+}
+
 /** Handler invoked when the AI requests a browser action */
 export type ActionHandler = (action: ActionPayload) => Promise<ActionResult>
 
@@ -510,6 +524,32 @@ export class SessionClient {
         const message = createBrowserActionMessage(this._sessionId, payload)
         this._addOutboundMessage(message)
         return this._sendRaw(message)
+    }
+
+    /**
+     * Subscribe this session to a TelPhi-produced interpretation stream.
+     *
+     * The listener is matched by `identifier` plus an endpoint/app scoped
+     * `scope` (usually the endpointId). TelAPI replays cached stream items and
+     * then forwards new items as they are produced.
+     */
+    listen(options: ListenOptions): boolean {
+        return this.sendBrowserAction({
+            messageType: options.messageType ?? 'browser.action.listen',
+            capabilityId: options.capabilityId,
+            capabilitySlug: options.capabilitySlug,
+            identifier: options.identifier,
+            data: {
+                identifier: options.identifier,
+                targetLanguage: options.targetLanguage,
+                scope: options.scope,
+                endpointId: options.endpointId,
+                startMode: options.startMode ?? 'closest_to_now',
+                sinceStreamId: options.sinceStreamId,
+                latencyOffsetMs: options.latencyOffsetMs,
+                includeCaptions: options.includeCaptions,
+            },
+        })
     }
 
     /** Enable text-chat mode (AI will respond to text messages) */

@@ -4,6 +4,7 @@ import type {
     OpenSessionOptions,
     StartCallOptions,
     ReadAloudOptions,
+    ListenOptions,
     PersistedSessionState,
     IceServer,
     RuntimeCapabilities,
@@ -511,6 +512,32 @@ export class DelphiClient {
         return audioPromise
     }
 
+    /**
+     * Open a listener session and subscribe it to an interpretation stream.
+     */
+    async listen(options: ListenOptions): Promise<SessionClient> {
+        const session = await this.openSession({
+            endpointId: options.endpointId,
+            mode: 'listen',
+        })
+        await this._waitForSessionConnected(session)
+        session.setBrowserContext({
+            identifier: options.identifier,
+            role: 'listener',
+            targetLanguage: options.targetLanguage,
+            source: 'interpretation_listener',
+            metadata: {
+                scope: options.scope ?? options.endpointId,
+            },
+        })
+        session.listen({
+            ...options,
+            endpointId: options.endpointId,
+            scope: options.scope ?? options.endpointId,
+        })
+        return session
+    }
+
     private async _getDefaultReadAloudCapability(endpointId: string): Promise<{
         id: string
         slug: string
@@ -595,7 +622,13 @@ export class DelphiClient {
      * `endCall()` (or `session.close()`) to hang up and tear down WebRTC.
      */
     async startCall(options: StartCallOptions): Promise<SessionClient> {
-        const { endpointId, endpointName = '', appName = '', autoDial = false } = options
+        const {
+            endpointId,
+            endpointName = '',
+            appName = '',
+            browserContext,
+            autoDial = false,
+        } = options
 
         if (this._voiceEndpointId && this._voiceEndpointId !== endpointId) {
             throw new Error(
@@ -612,6 +645,16 @@ export class DelphiClient {
             endpointName,
             appName,
         })
+
+        if (browserContext) {
+            await this._waitForSessionConnected(session)
+            const sent = session.setBrowserContext(browserContext)
+            if (!sent) {
+                logger.warn('[DelphiClient] Failed to send browserContext before call dial', {
+                    endpointId,
+                })
+            }
+        }
 
         const { telproDomain, webrtcGatewayUrl } = this._state.voiceCall
         if (!telproDomain) {

@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+**/*.tsbuildinfo
+.env
+.env.*
+.env.local
+fly.toml
+nginx.fly.conf
+examples/react/dist
+.turbo

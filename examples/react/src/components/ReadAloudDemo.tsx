@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 
-import { useDelphiClientContext } from '@ki-kombinat/delphi-client-js-sdk/react'
+import { useDelphiClientContext } from '../../../../src/react'
 
 /**
  * Read-aloud quickstart — mirrors the README example exactly:
@@ -17,7 +17,8 @@ export function ReadAloudDemo() {
     const delphi = useDelphiClientContext()
 
     const [endpointId, setEndpointId] = useState<string>(
-        import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] ?? '',
+        () =>
+            (import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] as string | undefined)?.trim() ?? '',
     )
     const [text, setText] = useState<string>('Hello from the Delphi SDK!')
     const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')

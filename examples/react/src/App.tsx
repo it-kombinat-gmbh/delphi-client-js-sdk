@@ -1,6 +1,9 @@
-import { DelphiClientProvider } from '@ki-kombinat/delphi-client-js-sdk/react'
+import { useMemo, useState } from 'react'
+
+import { DelphiClientProvider } from '../../../src/react'
 
 import { ReadAloudDemo } from './components/ReadAloudDemo'
+import { InterpretationDemo } from './components/InterpretationDemo'
 import { WebRTCPhone } from './components/WebRTCPhone'
 
 /**
@@ -10,28 +13,22 @@ import { WebRTCPhone } from './components/WebRTCPhone'
  * The SDK can also accept config updates at runtime via `DelphiConfigInit`.
  */
 export default function App() {
-    const apiDomain = import.meta.env['VITE_API_DOMAIN'] ?? 'localhost:3001'
+    const envApiDomain = (import.meta.env['VITE_API_DOMAIN'] as string | undefined)?.trim()
+    const envApiKey = (import.meta.env['VITE_API_KEY'] as string | undefined)?.trim()
 
-    const config = {
-        apiDomain,
-        apiKey: import.meta.env['VITE_API_KEY'] ?? '',
-        // Note: the WebRTC gateway URL is *not* configured here — it is
-        // returned by the server in the session-token response. The server
-        // is the single source of truth.
-        // Optional: STUN/TURN servers for ICE.
-        // If omitted the browser uses its default policy (no STUN/TURN).
-        // iceServers: [
-        //   { urls: `stun:${apiDomain}:3478` },
-        //   {
-        //     urls: [
-        //       `turn:${apiDomain}:3478?transport=udp`,
-        //       `turn:${apiDomain}:3478?transport=tcp`,
-        //     ],
-        //     username: import.meta.env['VITE_TURN_USERNAME'],
-        //     credential: import.meta.env['VITE_TURN_CREDENTIAL'],
-        //   },
-        // ],
-    }
+    const [apiDomainInput, setApiDomainInput] = useState(() => envApiDomain ?? 'localhost:3001')
+    const [apiKeyInput, setApiKeyInput] = useState(() => envApiKey ?? '')
+
+    const config = useMemo(
+        () => ({
+            apiDomain: apiDomainInput.trim() || envApiDomain || 'localhost:3001',
+            apiKey: apiKeyInput.trim() || envApiKey || '',
+            // Note: the WebRTC gateway URL is *not* configured here — it is
+            // returned by the server in the session-token response. The server
+            // is the single source of truth.
+        }),
+        [apiDomainInput, apiKeyInput, envApiDomain, envApiKey],
+    )
 
     return (
         <DelphiClientProvider config={config}>
@@ -43,17 +40,51 @@ export default function App() {
                     <p className="text-gray-500 mt-2">
                         A minimal Vite + React + Tailwind demo of the headless WebRTC softphone.
                     </p>
-                    {!config.apiKey && (
-                        <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                            <strong>Config required:</strong> Set{' '}
-                            <code className="font-mono">VITE_API_DOMAIN</code> and{' '}
-                            <code className="font-mono">VITE_API_KEY</code> in a{' '}
-                            <code className="font-mono">.env</code> file to connect to your TelAPI.
-                        </div>
-                    )}
                 </header>
                 <main className="max-w-2xl mx-auto space-y-6">
+                    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-900">TelAPI connection</h2>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Host and port only (no <code className="font-mono text-xs">https://</code>
+                                ). Empty fields fall back to{' '}
+                                <code className="font-mono text-xs">VITE_API_DOMAIN</code> /{' '}
+                                <code className="font-mono text-xs">VITE_API_KEY</code> from{' '}
+                                <code className="font-mono text-xs">.env</code> when set. Values stay in
+                                this tab; they are not written to disk.
+                            </p>
+                        </div>
+                        <label className="block">
+                            <span className="text-xs font-medium text-gray-700">API domain</span>
+                            <input
+                                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="api.example.com"
+                                autoComplete="off"
+                                spellCheck={false}
+                                value={apiDomainInput}
+                                onChange={(e) => setApiDomainInput(e.target.value)}
+                            />
+                        </label>
+                        <label className="block">
+                            <span className="text-xs font-medium text-gray-700">API key</span>
+                            <input
+                                type="password"
+                                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="sk_live_…"
+                                autoComplete="off"
+                                spellCheck={false}
+                                value={apiKeyInput}
+                                onChange={(e) => setApiKeyInput(e.target.value)}
+                            />
+                        </label>
+                        {!config.apiKey && (
+                            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                                Enter your API key above to authenticate requests to TelAPI.
+                            </div>
+                        )}
+                    </section>
                     <ReadAloudDemo />
+                    <InterpretationDemo />
                     <WebRTCPhone />
                 </main>
             </div>
