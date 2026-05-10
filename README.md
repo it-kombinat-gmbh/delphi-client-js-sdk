@@ -1,6 +1,6 @@
 # @ki-kombinat/delphi-client-js-sdk
 
-[![npm version](https://img.shields.io/npm/v/@ki-kombinat/delphi-client-js-sdk.svg)](https://www.npmjs.com/package/@kikombinat.com/delphi-client-js-sdk)
+[![npm version](https://img.shields.io/npm/v/@ki-kombinat/delphi-client-js-sdk.svg)](https://www.npmjs.com/package/@ki-kombinat/delphi-client-js-sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Headless TypeScript SDK for the **Delphi voice-AI platform**. Open AI-runtime
@@ -55,6 +55,7 @@ Sessions come in modes:
 | `text`                | Pure text chat                                    | None                         |
 | `audio_playback`      | TTS / read-aloud / non-call voice replies         | Streamed over the channel WS |
 | `voice_conversation`  | Full WebRTC two-way voice                         | SIP leg via WebRTC gateway   |
+| `listen`              | Interpretation listener — subscribe to a TelPhi stream | Streamed over the channel WS |
 | `browser_actions`     | Pure BOA dispatch (no AI conversation)            | n/a                          |
 
 The SDK keeps **one session per `endpointId`**. The first call decides the
@@ -79,17 +80,61 @@ const delphi = new DelphiClient({
 })
 
 // One-line read-aloud. Resolves when the audio finishes playing.
-await delphi.readAloud('Hello, world!', { endpointId: 'ext-100' })
+await delphi.readAloud('Hello, world!', { endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5' })
 
 // Repeated calls reuse the same session — one WS, one conversation thread.
-await delphi.readAloud('How are you?', { endpointId: 'ext-100' })
+await delphi.readAloud('How are you?', { endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5' })
 
 // Done? Close the session (or rely on the 5-minute idle timeout).
-await delphi.endSession('ext-100')
+await delphi.endSession('24599c70-1e79-4e52-9819-e2d97acf45a5')
 ```
 
 That's it for the simplest case. The server picks the right read-aloud
 browser action; you only supply the text.
+
+## Interpretation: speaker and listener
+
+For **live interpretation / translation**, two roles share the same
+`endpointId` but use different session modes:
+
+- **Speaker** — a normal WebRTC voice call (`voice_conversation`). Pass
+  `browserContext` so TelPhi knows who is speaking and how to correlate the
+  stream (for example `role: 'speaker'`, `identifier`, `sourceLanguage`, and
+  scope metadata such as `interpretationScope` matching the endpoint).
+
+```ts
+await delphi.startCall({
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
+    autoDial: true,
+    browserContext: {
+        identifier: 'booth-1',
+        role: 'speaker',
+        sourceLanguage: 'de',
+        source: 'interpretation_speaker',
+        metadata: { interpretationScope: '24599c70-1e79-4e52-9819-e2d97acf45a5' },
+    },
+})
+```
+
+- **Listener** — open a **`listen`** session, set listener browser context
+  (`role: 'listener'`, same `identifier` / language / scope as configured on
+  your runtime), then call `listen()` to attach to the TelPhi interpretation
+  stream (cached items replay, then live updates). Convenience API:
+
+```ts
+const session = await delphi.listen({
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
+    identifier: 'booth-1',
+    targetLanguage: 'en',
+    // scope defaults to endpointId; override if your app uses a different stream key
+})
+```
+
+Lower level, `SessionClient.listen()` sends the `browser.action.listen` BOA with
+`ListenOptions` (`targetLanguage`, `sinceStreamId`, `startMode`, captions,
+etc.). React apps can use `useDelphiSession({ endpointId, mode: 'listen', … })`
+and call `listen(...)` once `serverReady` is true — see
+`examples/react/src/components/InterpretationDemo.tsx`.
 
 ## Configuration
 
@@ -135,7 +180,7 @@ const delphi = new DelphiClient({
 ### 1. One-shot read-aloud (highest level)
 
 ```ts
-const audio = await delphi.readAloud('Welcome back!', { endpointId: 'ext-100' })
+const audio = await delphi.readAloud('Welcome back!', { endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5' })
 
 // `audio` is the assembled BrowserAudioEvent. The SDK already played it
 // (via new Audio()), but you can replay or download via `audio.dataUrl`.
@@ -146,7 +191,7 @@ Options:
 
 ```ts
 await delphi.readAloud('Some text', {
-    endpointId: 'ext-100',
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
 
     /** Optional metadata sent alongside the BOA. */
     metadata: { from: 'highlight' },
@@ -171,7 +216,7 @@ await delphi.readAloud('Some text', {
 
 ```ts
 const session = await delphi.openSession({
-    endpointId: 'ext-100',
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
     mode: 'audio_playback',
 })
 
@@ -205,7 +250,7 @@ delphi.setRemoteAudioElement(remoteAudioRef.current)
 delphi.setLocalAudioElement(localAudioRef.current)  // optional, for local mic monitoring
 
 const session = await delphi.startCall({
-    endpointId: 'ext-100',
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
     autoDial: true,
 })
 
@@ -228,7 +273,7 @@ Before opening a session, you can ask the runtime what an endpoint
 supports:
 
 ```ts
-const capabilities = await delphi.getCapabilities('ext-100')
+const capabilities = await delphi.getCapabilities('24599c70-1e79-4e52-9819-e2d97acf45a5')
 
 if (!delphi.hasCapability(capabilities, 'voice_conversation')) {
     throw new Error('This endpoint does not support voice calls.')
@@ -238,7 +283,7 @@ if (!delphi.hasCapability(capabilities, 'voice_conversation')) {
 delphi.assertCapability(capabilities, 'audio_playback')
 
 // Convenience: fetch + assert in one call.
-const caps = await delphi.assertEndpointCapability('ext-100', 'audio_playback')
+const caps = await delphi.assertEndpointCapability('24599c70-1e79-4e52-9819-e2d97acf45a5', 'audio_playback')
 
 console.log(caps.flows.browserActions)
 // → [{ id, slug, label, type, messageType, voiceInvocable }, …]
@@ -279,6 +324,7 @@ directly.
 | `sendReadAloud(content)`                     | Text chat — expects a voice response.                       |
 | `sendContextUpdate(content)`                 | Append context, no AI response.                             |
 | `sendBrowserAction(payload)`                 | Trigger a BOA side-flow.                                    |
+| `listen(opts)`                               | Subscribe to an interpretation stream (`browser.action.listen`). |
 | `enableTextChat() / disableTextChat()`       | Toggle the AI's text-chat mode.                             |
 | `setResponseMode('voice'\|'text'\|'both')`   | Switch AI output modality.                                  |
 | `audioDone(responseId?)`                     | Promise resolved when the next/specific audio response ends.|
@@ -397,7 +443,7 @@ function CallButton() {
     })
 
     const { sendReadAloud } = useDelphiSession({
-        endpointId: 'ext-100',
+        endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
         mode: 'voice_conversation',
         onAction: handleBrowserAction,
     })
@@ -413,7 +459,7 @@ on the highlighted text.
 
 ```tsx
 const { sendReadAloud, connected } = useDelphiSession({
-    endpointId: 'ext-100',
+    endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5',
     mode: 'audio_playback',
 })
 

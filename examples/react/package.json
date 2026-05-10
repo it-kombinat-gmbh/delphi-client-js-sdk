@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@kikombinat.com/delphi-client-js-sdk": "workspace:*",
+    "@ki-kombinat/delphi-client-js-sdk": "workspace:*",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

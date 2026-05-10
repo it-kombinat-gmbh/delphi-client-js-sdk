@@ -20,7 +20,7 @@ RUN node -e "\
 const fs=require('fs');\
 const p='package.json';\
 const j=JSON.parse(fs.readFileSync(p,'utf8'));\
-if (j.dependencies) delete j.dependencies['@kikombinat.com/delphi-client-js-sdk'];\
+if (j.dependencies) delete j.dependencies['@ki-kombinat/delphi-client-js-sdk'];\
 fs.writeFileSync(p, JSON.stringify(j, null, 2));\
 "
 RUN npm install && npm run build
