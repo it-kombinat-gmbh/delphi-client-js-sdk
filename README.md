@@ -12,8 +12,9 @@ unified API.
   calls all run through the same session abstraction.
 - **Session-first** — every interaction is wrapped in a server-issued session
   for accounting, rate limiting, and conversation history.
-- **Long-lived sessions** — sessions are find-or-create per endpoint, so
-  repeated `readAloud` calls reuse the same WebSocket and conversation context.
+- **Long-lived sessions** — sessions are find-or-create per **`endpointId` +
+  mode**, so repeated `readAloud` calls reuse the same WebSocket and the same
+  endpoint can run speaker and listener modes in parallel.
 - **Tree-shakeable** — pure ESM/CJS dual build, `sideEffects: false`.
 - **Zero runtime dependencies** in the core; React bindings are an optional
   sub-path that depends only on `react`.
@@ -58,9 +59,11 @@ Sessions come in modes:
 | `listen`              | Interpretation listener — subscribe to a TelPhi stream | Streamed over the channel WS |
 | `browser_actions`     | Pure BOA dispatch (no AI conversation)            | n/a                          |
 
-The SDK keeps **one session per `endpointId`**. The first call decides the
-mode; subsequent calls reuse it. Switching modes? Call
-`endSession(endpointId)` first.
+The SDK keeps **one session per `endpointId` + mode**. Subsequent calls with
+the same pair reuse the connection, while different modes can run side by side
+for the same endpoint (for example, an interpretation speaker and listener).
+Use `endSession(endpointId, mode)` to close one mode, or omit `mode` to close
+all sessions for that endpoint.
 
 ### Idle timeout
 
@@ -85,8 +88,9 @@ await delphi.readAloud('Hello, world!', { endpointId: '24599c70-1e79-4e52-9819-e
 // Repeated calls reuse the same session — one WS, one conversation thread.
 await delphi.readAloud('How are you?', { endpointId: '24599c70-1e79-4e52-9819-e2d97acf45a5' })
 
-// Done? Close the session (or rely on the 5-minute idle timeout).
-await delphi.endSession('24599c70-1e79-4e52-9819-e2d97acf45a5')
+// Done? Close the read-aloud session only, or omit the second arg to close
+// every mode for this endpoint.
+await delphi.endSession('24599c70-1e79-4e52-9819-e2d97acf45a5', 'audio_playback')
 ```
 
 That's it for the simplest case. The server picks the right read-aloud
@@ -541,10 +545,10 @@ configurable via `reconnectDelay`.
 ┌────────────────────────────────────────────────────────────────────────┐
 │                            DelphiClient                                │
 │  - getCapabilities()  - openSession()  - readAloud()  - startCall()    │
-│  - getSession()       - endSession()   - endAllSessions()              │
+│  - getSession(endpointId, mode?)  - endSession()  - endAllSessions()     │
 │                                                                        │
 │   WebRTC gateway + SIP (only when mode === 'voice_conversation')       │
-│   sessions Map<endpointId, SessionClient>                              │
+│   sessions Map: composite key endpointId + mode → SessionClient         │
 └────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼

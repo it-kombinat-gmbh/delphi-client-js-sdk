@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-    useDelphiClientContext,
-    useDelphiSession,
-} from '../../../../src/react'
+import { useDelphiClientContext, useDelphiSession } from '../../../../src/react'
 import type { BrowserAudioEvent, ChatPayload } from '../../../../src/react'
 
 export function InterpretationDemo() {
     const delphi = useDelphiClientContext()
     const [endpointId, setEndpointId] = useState(
-        () =>
-            (import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] as string | undefined)?.trim() ?? '',
+        () => (import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] as string | undefined)?.trim() ?? '',
     )
     const [identifier, setIdentifier] = useState('default')
     const [targetLanguage, setTargetLanguage] = useState('en')
@@ -20,7 +16,11 @@ export function InterpretationDemo() {
     const [audioEvents, setAudioEvents] = useState<BrowserAudioEvent[]>([])
     const [speakerStatus, setSpeakerStatus] = useState<string>('idle')
     const [listenerStatus, setListenerStatus] = useState<string>('idle')
+    const activeListenKeyRef = useRef<string | null>(null)
     const normalizedEndpointId = endpointId.trim()
+    const normalizedIdentifier = identifier.trim()
+    const normalizedTargetLanguage = targetLanguage.trim()
+    const listenerActive = listenerOpen || listenPending
 
     const listener = useDelphiSession({
         endpointId: listenerOpen ? normalizedEndpointId || null : null,
@@ -36,14 +36,14 @@ export function InterpretationDemo() {
     })
 
     const startSpeaker = useCallback(async () => {
-        if (!normalizedEndpointId || !identifier.trim()) return
+        if (!normalizedEndpointId || !normalizedIdentifier) return
         setSpeakerStatus('starting')
         try {
             await delphi.startCall({
                 endpointId: normalizedEndpointId,
                 autoDial: true,
                 browserContext: {
-                    identifier: identifier.trim(),
+                    identifier: normalizedIdentifier,
                     role: 'speaker',
                     sourceLanguage: 'de',
                     source: 'interpretation_speaker',
@@ -56,7 +56,7 @@ export function InterpretationDemo() {
         } catch (error) {
             setSpeakerStatus(error instanceof Error ? error.message : String(error))
         }
-    }, [delphi, identifier, normalizedEndpointId])
+    }, [delphi, normalizedEndpointId, normalizedIdentifier])
 
     const stopSpeaker = useCallback(async () => {
         await delphi.endCall()
@@ -64,15 +64,20 @@ export function InterpretationDemo() {
     }, [delphi])
 
     const startListening = useCallback(() => {
-        if (!normalizedEndpointId || !identifier.trim()) return
+        if (!normalizedEndpointId || !normalizedIdentifier || !normalizedTargetLanguage) return
+        if (listenerOpen) {
+            setListenerStatus('already listening - stop before starting another subscription')
+            return
+        }
         setCaptions([])
         setAudioEvents([])
         setListenerStatus('connecting')
         setListenPending(true)
         setListenerOpen(true)
-    }, [identifier, normalizedEndpointId])
+    }, [listenerOpen, normalizedEndpointId, normalizedIdentifier, normalizedTargetLanguage])
 
     const stopListening = useCallback(async () => {
+        activeListenKeyRef.current = null
         setListenPending(false)
         setListenerOpen(false)
         setListenerStatus('idle')
@@ -81,9 +86,17 @@ export function InterpretationDemo() {
 
     useEffect(() => {
         if (!listenerOpen || !listenPending || !listener.serverReady) return
-        const listenerIdentifier = identifier.trim()
-        const language = targetLanguage.trim()
+        const listenerIdentifier = normalizedIdentifier
+        const language = normalizedTargetLanguage
         if (!listenerIdentifier || !language || !normalizedEndpointId) return
+        const listenKey = `${normalizedEndpointId}:${listenerIdentifier}:${language}`
+
+        if (activeListenKeyRef.current === listenKey) {
+            setListenPending(false)
+            return
+        }
+
+        activeListenKeyRef.current = listenKey
 
         const contextSent = listener.setBrowserContext({
             identifier: listenerIdentifier,
@@ -104,25 +117,30 @@ export function InterpretationDemo() {
 
         if (contextSent && listenSent) {
             setListenPending(false)
-            setListenerStatus(`listening to ${normalizedEndpointId}/${listenerIdentifier}/${language}`)
+            setListenerStatus(
+                `listening to ${normalizedEndpointId}/${listenerIdentifier}/${language}`,
+            )
         } else {
+            activeListenKeyRef.current = null
             setListenerStatus('listener session not ready yet')
         }
     }, [
-        identifier,
         listenPending,
         listener,
         listener.connected,
         listener.serverReady,
         listenerOpen,
         normalizedEndpointId,
-        targetLanguage,
+        normalizedIdentifier,
+        normalizedTargetLanguage,
     ])
 
     return (
         <div className="rounded-xl border border-teal-200 bg-white p-5 shadow-sm space-y-4">
             <header>
-                <h2 className="text-lg font-semibold text-gray-900">Interpretation speaker/listener</h2>
+                <h2 className="text-lg font-semibold text-gray-900">
+                    Interpretation speaker/listener
+                </h2>
                 <p className="text-sm text-gray-500">
                     Speaker and listener use the same endpoint ID. The difference is the SDK mode:
                     speaker starts a WebRTC voice call, listener subscribes to the interpretation
@@ -137,6 +155,7 @@ export function InterpretationDemo() {
                         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
                         value={endpointId}
                         onChange={(event) => setEndpointId(event.target.value)}
+                        disabled={listenerActive}
                     />
                 </label>
                 <label className="block sm:col-span-2">
@@ -145,6 +164,7 @@ export function InterpretationDemo() {
                         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                         value={identifier}
                         onChange={(event) => setIdentifier(event.target.value)}
+                        disabled={listenerActive}
                     />
                 </label>
                 <label className="block">
@@ -153,6 +173,7 @@ export function InterpretationDemo() {
                         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                         value={targetLanguage}
                         onChange={(event) => setTargetLanguage(event.target.value)}
+                        disabled={listenerActive}
                     />
                 </label>
             </div>
@@ -165,7 +186,7 @@ export function InterpretationDemo() {
                             className="rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
                             disabled={
                                 !normalizedEndpointId ||
-                                !identifier.trim() ||
+                                !normalizedIdentifier ||
                                 speakerStatus === 'speaking'
                             }
                             onClick={startSpeaker}
@@ -189,12 +210,13 @@ export function InterpretationDemo() {
                             className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
                             disabled={
                                 !normalizedEndpointId ||
-                                !identifier.trim() ||
-                                listenPending
+                                !normalizedIdentifier ||
+                                !normalizedTargetLanguage ||
+                                listenerActive
                             }
                             onClick={startListening}
                         >
-                            {listenPending ? 'Connecting…' : 'Listen'}
+                            {listenPending ? 'Connecting...' : listenerOpen ? 'Listening' : 'Listen'}
                         </button>
                         <button
                             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"

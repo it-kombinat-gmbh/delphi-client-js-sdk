@@ -1,6 +1,6 @@
 {
   "name": "@ki-kombinat/delphi-client-js-sdk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Session-first SDK for the Delphi voice-AI platform. Read-aloud, browser actions, text chat, and full WebRTC voice calls through one unified API. Zero runtime dependencies in the core; optional React bindings.",
   "keywords": [
     "delphi",

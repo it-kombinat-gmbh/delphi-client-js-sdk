@@ -54,7 +54,7 @@ export interface DelphiClientState {
     }
     /** Human-readable phase string for UIs */
     status: string
-    /** Read-only view of every active session keyed by endpointId. */
+    /** Read-only view of every active session keyed internally by endpointId + mode. */
     sessions: ReadonlyArray<{
         endpointId: string
         sessionId: string
@@ -104,6 +104,7 @@ interface MediaRefs {
 
 interface SessionEntry {
     session: SessionClient
+    key: string
     endpointId: string
     mode: SessionMode
     idleTimer: ReturnType<typeof setTimeout> | null
@@ -154,8 +155,9 @@ const DEFAULT_READ_ALOUD_MESSAGE_TYPE = 'browser.action.readAloud'
  *
  * Manages session lifecycle (token acquisition, channel WebSocket, optional
  * WebRTC + SIP for voice), capability discovery, and high-level helpers like
- * `readAloud()` and `startCall()`. Sessions are long-lived per endpoint so
- * repeated calls reuse the same connection.
+ * `readAloud()` and `startCall()`. Sessions are long-lived per endpoint/mode
+ * so repeated calls reuse the same connection without blocking simultaneous
+ * modes like interpretation speaker + listener.
  *
  * Zero runtime dependencies. Compatible with `useSyncExternalStore`.
  *
@@ -329,16 +331,15 @@ export class DelphiClient {
     }
 
     // -------------------------------------------------------------------------
-    // Session management (long-lived, one per endpointId)
+    // Session management (long-lived, one per endpointId + mode)
     // -------------------------------------------------------------------------
 
     /**
-     * Find-or-create a session for an endpoint.
+     * Find-or-create a session for an endpoint/mode pair.
      *
-     * The first call for an endpoint determines the session mode; subsequent
-     * calls reuse the open session and ignore the `mode` parameter (with a
-     * debug-log warning if it differs). To switch modes, call
-     * `endSession({ endpointId })` first.
+     * Calls with the same endpoint and mode reuse the open session. Different
+     * modes for the same endpoint are kept separate so a voice speaker and an
+     * interpretation listener can run side by side.
      *
      * The returned `SessionClient` is fully connected (or in the process of
      * connecting; `getState().connectionState` will transition through
@@ -346,40 +347,59 @@ export class DelphiClient {
      */
     async openSession(options: OpenSessionOptions): Promise<SessionClient> {
         const { endpointId, mode } = options
+        const key = this._sessionKey(endpointId, mode)
 
-        const existing = this._sessions.get(endpointId)
+        const existing = this._sessions.get(key)
         if (existing) {
-            if (existing.mode !== mode) {
-                logger.debug(
-                    `[DelphiClient] openSession({ endpointId: ${endpointId}, mode: ${mode} }) ` +
-                        `reusing existing session opened with mode '${existing.mode}'. ` +
-                        `Call endSession first if you want a different mode.`,
-                )
-            }
             this._touchSession(existing)
             return existing.session
         }
 
         const token = await this.getSessionToken(endpointId, mode)
+        /** Set only for validated `voice_conversation` opens */
+        let voiceGateways: { telproDomain: string; webrtcGatewayUrl: string } | undefined
+        // Voice/WebRTC requires gateway metadata — fail before opening WS or caching
+        // the session entry. Otherwise stale entries break every retry (openSession
+        // would short-circuit on the cache without refetching a token).
+        if (mode === 'voice_conversation') {
+            const domain = token.telproDomain?.trim()
+            const gw = token.webrtcGatewayUrl?.trim()
+            if (!domain) {
+                throw new Error(
+                    'Voice call requires telproDomain in the session token response. ' +
+                        'Check that the endpoint is configured for voice_conversation.',
+                )
+            }
+            if (!gw) {
+                throw new Error(
+                    'Voice call requires webrtcGatewayUrl in the session token response. ' +
+                        'Update your TelAPI server to include the WebRTC gateway URL when ' +
+                        "issuing tokens for mode 'voice_conversation'.",
+                )
+            }
+            voiceGateways = { telproDomain: domain, webrtcGatewayUrl: gw }
+        }
+
         const session = new SessionClient()
         const wsUrl = this._config.apiDomain ? `wss://${this._config.apiDomain}` : undefined
 
         const entry: SessionEntry = {
             session,
+            key,
             endpointId,
             mode,
             idleTimer: null,
             isVoice: mode === 'voice_conversation',
         }
-        this._sessions.set(endpointId, entry)
+        this._sessions.set(key, entry)
 
         // De-register on close (whether triggered by us or the server)
         session.onClose(() => {
-            const current = this._sessions.get(endpointId)
+            const current = this._sessions.get(key)
             if (current === entry) {
                 this._clearIdleTimer(entry)
-                this._sessions.delete(endpointId)
-                if (this._voiceEndpointId === endpointId) {
+                this._sessions.delete(key)
+                if (entry.isVoice && this._voiceEndpointId === endpointId) {
                     this._voiceEndpointId = null
                     this._handleVoiceHangup()
                 }
@@ -393,31 +413,27 @@ export class DelphiClient {
         session.setMetadata({ endpointId, mode })
         session.connect(token.sessionId, token.wsToken, wsUrl)
 
-        if (mode === 'voice_conversation') {
+        if (voiceGateways) {
             this._voiceEndpointId = endpointId
             this._setVoiceState({
                 sessionId: token.sessionId,
                 endpointId,
                 endpointName: options.endpointName ?? '',
                 appName: options.appName ?? '',
+                telproDomain: voiceGateways.telproDomain,
+                webrtcGatewayUrl: voiceGateways.webrtcGatewayUrl,
             })
-            if (token.telproDomain) {
-                this._setVoiceState({
-                    telproDomain: token.telproDomain,
-                    webrtcGatewayUrl: token.webrtcGatewayUrl ?? null,
-                })
-                saveSessionState({
-                    sessionId: token.sessionId,
-                    endpointId,
-                    mode,
-                    endpointName: options.endpointName,
-                    appName: options.appName,
-                    startedAt: Date.now(),
-                    wsToken: token.wsToken,
-                    telproDomain: token.telproDomain,
-                    webrtcGatewayUrl: token.webrtcGatewayUrl,
-                })
-            }
+            saveSessionState({
+                sessionId: token.sessionId,
+                endpointId,
+                mode,
+                endpointName: options.endpointName,
+                appName: options.appName,
+                startedAt: Date.now(),
+                wsToken: token.wsToken,
+                telproDomain: voiceGateways.telproDomain,
+                webrtcGatewayUrl: voiceGateways.webrtcGatewayUrl,
+            })
         }
 
         this._refreshSessionsView()
@@ -425,16 +441,26 @@ export class DelphiClient {
         return session
     }
 
-    /** Returns the existing `SessionClient` for an endpoint, or `null`. No I/O. */
-    getSession(endpointId: string): SessionClient | null {
-        return this._sessions.get(endpointId)?.session ?? null
+    /** Returns the existing `SessionClient` for an endpoint/mode, or `null`. No I/O. */
+    getSession(endpointId: string, mode?: SessionMode): SessionClient | null {
+        if (mode) return this._sessions.get(this._sessionKey(endpointId, mode))?.session ?? null
+        return Array.from(this._sessions.values()).find((entry) => entry.endpointId === endpointId)
+            ?.session ?? null
     }
 
-    /** Close the session for an endpoint (no-op if none open). */
-    async endSession(endpointId: string): Promise<void> {
-        const entry = this._sessions.get(endpointId)
-        if (!entry) return
-        await entry.session.close()
+    /** Close the session(s) for an endpoint (no-op if none open). */
+    async endSession(endpointId: string, mode?: SessionMode): Promise<void> {
+        if (mode) {
+            const entry = this._sessions.get(this._sessionKey(endpointId, mode))
+            if (!entry) return
+            await entry.session.close()
+            return
+        }
+
+        const entries = Array.from(this._sessions.values()).filter(
+            (entry) => entry.endpointId === endpointId,
+        )
+        await Promise.all(entries.map((entry) => entry.session.close()))
     }
 
     /** Close every active session. */
@@ -639,12 +665,19 @@ export class DelphiClient {
         this._setStatus('Preparing call…')
         this._setVoiceState({ autoDialPending: autoDial, endpointName, appName })
 
-        const session = await this.openSession({
-            endpointId,
-            mode: 'voice_conversation',
-            endpointName,
-            appName,
-        })
+        let session: SessionClient
+        try {
+            session = await this.openSession({
+                endpointId,
+                mode: 'voice_conversation',
+                endpointName,
+                appName,
+            })
+        } catch (error) {
+            this._setVoiceState({ autoDialPending: false })
+            this._setStatus('Disconnected')
+            throw error
+        }
 
         if (browserContext) {
             await this._waitForSessionConnected(session)
@@ -656,14 +689,19 @@ export class DelphiClient {
             }
         }
 
-        const { telproDomain, webrtcGatewayUrl } = this._state.voiceCall
-        if (!telproDomain) {
-            throw new Error(
-                'Voice call requires telproDomain in the session token response. ' +
-                    'Check that the endpoint is configured for voice_conversation.',
-            )
-        }
-        if (!webrtcGatewayUrl) {
+        const resolvedTelproDomain = this._state.voiceCall.telproDomain?.trim()
+        const resolvedGatewayUrl = this._state.voiceCall.webrtcGatewayUrl?.trim()
+        if (!resolvedTelproDomain || !resolvedGatewayUrl) {
+            // Recover wedged runtime state from older SDKs (channels opened before
+            // telpro/webrtc prerequisites were enforced), so callers are not stuck
+            // replaying failures from a reusable cached session forever.
+            await this.endCall().catch(() => undefined)
+            if (!resolvedTelproDomain) {
+                throw new Error(
+                    'Voice call requires telproDomain in the session token response. ' +
+                        'Check that the endpoint is configured for voice_conversation.',
+                )
+            }
             throw new Error(
                 'Voice call requires webrtcGatewayUrl in the session token response. ' +
                     'Update your TelAPI server to include the WebRTC gateway URL when ' +
@@ -671,7 +709,7 @@ export class DelphiClient {
             )
         }
 
-        await this._initWebRTCGateway(telproDomain, webrtcGatewayUrl)
+        await this._initWebRTCGateway(resolvedTelproDomain, resolvedGatewayUrl)
 
         if (autoDial && this._state.voiceCall.registered) {
             this._setVoiceState({ autoDialPending: false })
@@ -685,7 +723,7 @@ export class DelphiClient {
     async endCall(): Promise<void> {
         if (!this._voiceEndpointId) return
         await this._hangup()
-        await this.endSession(this._voiceEndpointId)
+        await this.endSession(this._voiceEndpointId, 'voice_conversation')
     }
 
     // -------------------------------------------------------------------------
@@ -782,20 +820,22 @@ export class DelphiClient {
         // Re-open the session (without going through the token endpoint)
         const session = new SessionClient()
         const wsUrl = this._config.apiDomain ? `wss://${this._config.apiDomain}` : undefined
+        const key = this._sessionKey(state.endpointId, 'voice_conversation')
         const entry: SessionEntry = {
             session,
+            key,
             endpointId: state.endpointId,
             mode: 'voice_conversation',
             idleTimer: null,
             isVoice: true,
         }
-        this._sessions.set(state.endpointId, entry)
+        this._sessions.set(key, entry)
         this._voiceEndpointId = state.endpointId
 
         session.onClose(() => {
-            const current = this._sessions.get(state.endpointId)
+            const current = this._sessions.get(key)
             if (current === entry) {
-                this._sessions.delete(state.endpointId)
+                this._sessions.delete(key)
                 if (this._voiceEndpointId === state.endpointId) {
                     this._voiceEndpointId = null
                     this._handleVoiceHangup()
@@ -874,7 +914,7 @@ export class DelphiClient {
 
         if (entry.idleTimer) clearTimeout(entry.idleTimer)
         entry.idleTimer = setTimeout(() => {
-            const current = this._sessions.get(entry.endpointId)
+            const current = this._sessions.get(entry.key)
             if (current === entry) {
                 logger.info(
                     `[DelphiClient] Closing idle session for endpoint '${entry.endpointId}' (${entry.mode}) after ${timeoutMs}ms`,
@@ -882,6 +922,10 @@ export class DelphiClient {
                 void entry.session.close()
             }
         }, timeoutMs)
+    }
+
+    private _sessionKey(endpointId: string, mode: SessionMode): string {
+        return `${endpointId}\u0000${mode}`
     }
 
     private _clearIdleTimer(entry: SessionEntry): void {

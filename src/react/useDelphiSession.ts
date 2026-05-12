@@ -185,11 +185,11 @@ export function useDelphiSession(options: UseDelphiSessionOptions): UseDelphiSes
     // reference would still point at the closed SessionClient and the hook
     // would surface stale `messages` / `connectionState`. Going through
     // `delphi.getSession()` on every notification keeps us aligned with the
-    // current session map.
+    // current endpoint/mode session map.
     const subscribeToDelphi = useCallback((cb: () => void) => delphi.subscribe(cb), [delphi])
     const getSessionFromDelphi = useCallback(
-        () => (endpointId ? delphi.getSession(endpointId) : null),
-        [delphi, endpointId],
+        () => (endpointId ? delphi.getSession(endpointId, mode) : null),
+        [delphi, endpointId, mode],
     )
     const session = useSyncExternalStore(
         subscribeToDelphi,

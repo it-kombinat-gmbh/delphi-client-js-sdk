@@ -17,8 +17,7 @@ export function ReadAloudDemo() {
     const delphi = useDelphiClientContext()
 
     const [endpointId, setEndpointId] = useState<string>(
-        () =>
-            (import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] as string | undefined)?.trim() ?? '',
+        () => (import.meta.env['VITE_DEFAULT_ENDPOINT_ID'] as string | undefined)?.trim() ?? '',
     )
     const [text, setText] = useState<string>('Hello from the Delphi SDK!')
     const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
@@ -48,7 +47,7 @@ export function ReadAloudDemo() {
     const handleEndSession = useCallback(async () => {
         if (!endpointId.trim()) return
         try {
-            await delphi.endSession(endpointId.trim())
+            await delphi.endSession(endpointId.trim(), 'audio_playback')
             setStatus('idle')
             setError(null)
             setLastAudio(null)

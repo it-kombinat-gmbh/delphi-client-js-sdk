@@ -44,14 +44,17 @@ export default function App() {
                 <main className="max-w-2xl mx-auto space-y-6">
                     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
                         <div>
-                            <h2 className="text-lg font-semibold text-gray-900">TelAPI connection</h2>
+                            <h2 className="text-lg font-semibold text-gray-900">
+                                TelAPI connection
+                            </h2>
                             <p className="text-sm text-gray-500 mt-1">
-                                Host and port only (no <code className="font-mono text-xs">https://</code>
+                                Host and port only (no{' '}
+                                <code className="font-mono text-xs">https://</code>
                                 ). Empty fields fall back to{' '}
                                 <code className="font-mono text-xs">VITE_API_DOMAIN</code> /{' '}
                                 <code className="font-mono text-xs">VITE_API_KEY</code> from{' '}
-                                <code className="font-mono text-xs">.env</code> when set. Values stay in
-                                this tab; they are not written to disk.
+                                <code className="font-mono text-xs">.env</code> when set. Values
+                                stay in this tab; they are not written to disk.
                             </p>
                         </div>
                         <label className="block">
