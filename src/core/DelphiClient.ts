@@ -444,8 +444,10 @@ export class DelphiClient {
     /** Returns the existing `SessionClient` for an endpoint/mode, or `null`. No I/O. */
     getSession(endpointId: string, mode?: SessionMode): SessionClient | null {
         if (mode) return this._sessions.get(this._sessionKey(endpointId, mode))?.session ?? null
-        return Array.from(this._sessions.values()).find((entry) => entry.endpointId === endpointId)
-            ?.session ?? null
+        return (
+            Array.from(this._sessions.values()).find((entry) => entry.endpointId === endpointId)
+                ?.session ?? null
+        )
     }
 
     /** Close the session(s) for an endpoint (no-op if none open). */
