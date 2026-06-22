@@ -66,7 +66,8 @@
     "lint": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "lint:fix": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --fix --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run build"
+    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run build",
+    "prepare": "husky"
   },
   "peerDependencies": {
     "react": ">=18.0.0"
@@ -79,6 +80,7 @@
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "lint-staged": "^16.4.0",
     "react": "19.2.4",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
