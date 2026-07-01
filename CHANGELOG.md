@@ -5,6 +5,18 @@ All notable changes to `@ki-kombinat/delphi-client-js-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Text chat sessions** — `mode: 'text'` sessions can send pure text messages
+  against `WEB_CHAT` endpoints.
+- **Text ↔ voice handoff** — `DelphiClient.upgradeToVoice()` and
+  `DelphiClient.downgradeToText()` continue the same runtime `sessionId` across
+  text chat and WebRTC voice.
+- **React example** — `TextChatDemo` shows text chat plus optional voice upgrade
+  with `VITE_TEXT_CHAT_ENDPOINT_ID`.
+
 ## [0.1.3] - 2026-05-12
 
 ### Changed
