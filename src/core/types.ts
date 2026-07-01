@@ -201,11 +201,30 @@ export interface StartCallOptions {
     autoDial?: boolean
 }
 
+/** Parameters for `delphi.upgradeToVoice()` — continues an open text session as voice. */
+export interface UpgradeToVoiceOptions {
+    endpointId: string
+    endpointName?: string
+    appName?: string
+    browserContext?: BrowserContext
+    /** If `true`, dial as soon as the SIP plugin reports `registered`. Default `false`. */
+    autoDial?: boolean
+}
+
+/** Parameters for `delphi.downgradeToText()` — continues a voice session as text chat. */
+export interface DowngradeToTextOptions {
+    endpointId: string
+    endpointName?: string
+    appName?: string
+    /** End the active WebRTC call before downgrading. Default `true`. */
+    endCallFirst?: boolean
+}
+
+export type RuntimeMigration = 'text_to_voice' | 'voice_to_text' | 'api_to_media'
+
 export type RuntimeInteractionMode = SessionMode
 
 export type RuntimeTransport = 'rest' | 'websocket' | 'existing_media' | 'webrtc'
-
-export type RuntimeMigration = 'text_to_voice' | 'api_to_media'
 
 export interface RuntimeCapabilities {
     endpointId: string

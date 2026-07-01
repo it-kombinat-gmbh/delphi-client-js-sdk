@@ -60,6 +60,7 @@ export type ControlCommand =
     | 'clear_context'
     /** Switch the AI response output modality (voice ↔ text-only / Option A) */
     | 'set_response_mode'
+    | 'prepare_voice_to_text_handoff'
 
 /** How the AI should respond to messages */
 export type ResponseMode = 'voice' | 'text' | 'both'

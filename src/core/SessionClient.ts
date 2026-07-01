@@ -403,6 +403,12 @@ export class SessionClient {
         }
     }
 
+    /** Prepend prior channel messages (e.g. after text→voice upgrade). */
+    importMessages(messages: ChannelMessage[]): void {
+        if (messages.length === 0) return
+        this._updateState({ messages: [...messages, ...this._state.messages] })
+    }
+
     /** Reset the idle-timeout clock without sending anything. */
     touch(): void {
         this._updateState({ lastActivityAt: Date.now() })

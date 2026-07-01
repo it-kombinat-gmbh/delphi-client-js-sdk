@@ -3,6 +3,8 @@ import type {
     SessionTokenResponse,
     OpenSessionOptions,
     StartCallOptions,
+    UpgradeToVoiceOptions,
+    DowngradeToTextOptions,
     ReadAloudOptions,
     ListenOptions,
     PersistedSessionState,
@@ -13,6 +15,7 @@ import type {
 } from './types'
 import { SessionClient, type SessionOptions, type BrowserAudioEvent } from './SessionClient'
 import { randomString } from './utils'
+import { createControlMessage } from './utils/channel'
 import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionState'
 import { playDtmfTone } from './utils/playDtmfTone'
 import { setLogger, logDebug, logger } from './utils/sdkLogger'
@@ -272,9 +275,159 @@ export class DelphiClient {
         return data
     }
 
-    // -------------------------------------------------------------------------
-    // Capability discovery
-    // -------------------------------------------------------------------------
+    /**
+     * Upgrade an active text session to voice, preserving FlowEngine context.
+     */
+    async requestSessionUpgrade(
+        sessionId: string,
+        endpointId: string,
+    ): Promise<SessionTokenResponse> {
+        const { apiDomain, apiKey, sessionTokenUrl } = this._config
+
+        if (!sessionTokenUrl && !apiDomain) throw new Error('apiDomain not configured')
+        if (!sessionTokenUrl && !apiKey) throw new Error('apiKey not configured')
+
+        const base = sessionTokenUrl
+            ? sessionTokenUrl.replace(/\/token\/?$/, '')
+            : `https://${apiDomain}/api/v1/sessions`
+        const url = `${base}/upgrade`
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (apiKey) headers['X-API-Key'] = apiKey
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ sessionId, endpointId }),
+        })
+
+        if (!response.ok) {
+            const err = (await response.json().catch(() => ({ error: 'Unknown error' }))) as {
+                error?: string | { message?: string }
+            }
+            const message =
+                typeof err.error === 'string'
+                    ? err.error
+                    : err.error?.message || `Failed to upgrade session: ${response.status}`
+            throw new Error(message)
+        }
+
+        return (await response.json()) as SessionTokenResponse
+    }
+
+    /**
+     * Downgrade an active voice session back to text on the same sessionId.
+     */
+    async requestSessionDowngrade(
+        sessionId: string,
+        endpointId: string,
+    ): Promise<SessionTokenResponse> {
+        const { apiDomain, apiKey, sessionTokenUrl } = this._config
+
+        if (!sessionTokenUrl && !apiDomain) throw new Error('apiDomain not configured')
+        if (!sessionTokenUrl && !apiKey) throw new Error('apiKey not configured')
+
+        const base = sessionTokenUrl
+            ? sessionTokenUrl.replace(/\/token\/?$/, '')
+            : `https://${apiDomain}/api/v1/sessions`
+        const url = `${base}/downgrade`
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (apiKey) headers['X-API-Key'] = apiKey
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ sessionId, endpointId }),
+        })
+
+        if (!response.ok) {
+            const err = (await response.json().catch(() => ({ error: 'Unknown error' }))) as {
+                error?: string | { message?: string }
+            }
+            const message =
+                typeof err.error === 'string'
+                    ? err.error
+                    : err.error?.message || `Failed to downgrade session: ${response.status}`
+            throw new Error(message)
+        }
+
+        return (await response.json()) as SessionTokenResponse
+    }
+
+    /**
+     * Open a session from an already-issued token (used after text→voice upgrade).
+     */
+    async openSessionWithToken(
+        options: OpenSessionOptions & { token: SessionTokenResponse },
+    ): Promise<SessionClient> {
+        const { endpointId, mode, token } = options
+        const key = this._sessionKey(endpointId, mode)
+
+        const existing = this._sessions.get(key)
+        if (existing) {
+            this._touchSession(existing)
+            return existing.session
+        }
+
+        let voiceGateways: { telproDomain: string; webrtcGatewayUrl: string } | undefined
+        if (mode === 'voice_conversation') {
+            const domain = token.telproDomain?.trim()
+            const gw = token.webrtcGatewayUrl?.trim()
+            if (!domain || !gw) {
+                throw new Error(
+                    'Voice session upgrade requires telproDomain and webrtcGatewayUrl in the response.',
+                )
+            }
+            voiceGateways = { telproDomain: domain, webrtcGatewayUrl: gw }
+        }
+
+        const session = new SessionClient()
+        const wsUrl = this._config.apiDomain ? `wss://${this._config.apiDomain}` : undefined
+
+        const entry: SessionEntry = {
+            session,
+            key,
+            endpointId,
+            mode,
+            idleTimer: null,
+            isVoice: mode === 'voice_conversation',
+        }
+        this._sessions.set(key, entry)
+
+        session.onClose(() => {
+            const current = this._sessions.get(key)
+            if (current === entry) {
+                this._clearIdleTimer(entry)
+                this._sessions.delete(key)
+                if (entry.isVoice && this._voiceEndpointId === endpointId) {
+                    this._voiceEndpointId = null
+                    this._handleVoiceHangup()
+                }
+                this._refreshSessionsView()
+            }
+        })
+
+        session.subscribe(() => this._touchSession(entry))
+        session.setMetadata({ endpointId, mode })
+        session.connect(token.sessionId, token.wsToken, wsUrl)
+
+        if (voiceGateways) {
+            this._voiceEndpointId = endpointId
+            this._setVoiceState({
+                sessionId: token.sessionId,
+                endpointId,
+                endpointName: options.endpointName ?? '',
+                appName: options.appName ?? '',
+                telproDomain: voiceGateways.telproDomain,
+                webrtcGatewayUrl: voiceGateways.webrtcGatewayUrl,
+            })
+        }
+
+        this._refreshSessionsView()
+        this._touchSession(entry)
+        return session
+    }
 
     /**
      * Discover which runtime modes and transports an endpoint supports.
@@ -351,8 +504,16 @@ export class DelphiClient {
 
         const existing = this._sessions.get(key)
         if (existing) {
-            this._touchSession(existing)
-            return existing.session
+            if (mode === 'voice_conversation' && this._voiceEndpointId !== endpointId) {
+                // A remote hangup clears voice state before the channel close
+                // callback removes the cached session. Do not reuse that stale
+                // session for the next call, because its gateway metadata has
+                // already been cleared.
+                await existing.session.close()
+            } else {
+                this._touchSession(existing)
+                return existing.session
+            }
         }
 
         const token = await this.getSessionToken(endpointId, mode)
@@ -721,11 +882,144 @@ export class DelphiClient {
         return session
     }
 
+    /**
+     * Migrate an active `text` session to `voice_conversation` on the same
+     * sessionId, then bring up WebRTC. Requires an open text session first
+     * (`openSession({ mode: 'text' })`).
+     */
+    async upgradeToVoice(options: UpgradeToVoiceOptions): Promise<SessionClient> {
+        const {
+            endpointId,
+            endpointName = '',
+            appName = '',
+            browserContext,
+            autoDial = false,
+        } = options
+
+        const textKey = this._sessionKey(endpointId, 'text')
+        const textEntry = this._sessions.get(textKey)
+        if (!textEntry) {
+            throw new Error(
+                'No active text session for this endpoint. Call openSession({ mode: "text" }) first.',
+            )
+        }
+
+        const sessionId = textEntry.session.getState().sessionId
+        if (!sessionId) {
+            throw new Error('Text session is not connected yet')
+        }
+
+        await this._waitForSessionConnected(textEntry.session)
+
+        const priorMessages = [...textEntry.session.getState().messages]
+
+        this._setStatus('Upgrading to voice…')
+        const upgrade = await this.requestSessionUpgrade(sessionId, endpointId)
+
+        await textEntry.session.close()
+        this._sessions.delete(textKey)
+
+        const session = await this.openSessionWithToken({
+            endpointId,
+            mode: 'voice_conversation',
+            token: upgrade,
+            endpointName,
+            appName,
+        })
+
+        if (priorMessages.length > 0) {
+            session.importMessages(priorMessages)
+        }
+
+        if (browserContext) {
+            await this._waitForSessionConnected(session)
+            session.setBrowserContext(browserContext)
+        }
+
+        const domain = upgrade.telproDomain?.trim()
+        const gw = upgrade.webrtcGatewayUrl?.trim()
+        if (!domain || !gw) {
+            throw new Error('Upgrade response missing TelPro / WebRTC gateway metadata')
+        }
+
+        this._setVoiceState({ autoDialPending: autoDial })
+        await this._initWebRTCGateway(domain, gw)
+
+        if (autoDial && this._state.voiceCall.registered) {
+            this._setVoiceState({ autoDialPending: false })
+            void this._dial()
+        }
+
+        return session
+    }
+
+    /**
+     * Downgrade an active voice session back to text on the same sessionId.
+     * Ends the WebRTC call by default so TelPhi can persist the transcript.
+     */
+    async downgradeToText(options: DowngradeToTextOptions): Promise<SessionClient> {
+        const {
+            endpointId,
+            endpointName = '',
+            appName = '',
+            endCallFirst = true,
+        } = options
+
+        const voiceKey = this._sessionKey(endpointId, 'voice_conversation')
+        const voiceEntry = this._sessions.get(voiceKey)
+        if (!voiceEntry) {
+            throw new Error(
+                'No active voice session for this endpoint. Start a voice session first.',
+            )
+        }
+
+        const sessionId = voiceEntry.session.getState().sessionId
+        if (!sessionId) {
+            throw new Error('Voice session is not connected yet')
+        }
+
+        await this._waitForSessionConnected(voiceEntry.session)
+        const priorMessages = [...voiceEntry.session.getState().messages]
+
+        voiceEntry.session.sendMessage(
+            createControlMessage(sessionId, 'prepare_voice_to_text_handoff'),
+        )
+        await new Promise((resolve) => setTimeout(resolve, 400))
+
+        this._setStatus('Downgrading to text…')
+        const downgrade = await this.requestSessionDowngrade(sessionId, endpointId)
+
+        if (endCallFirst) {
+            await this._hangup()
+        }
+        await voiceEntry.session.close()
+        this._sessions.delete(voiceKey)
+        if (this._voiceEndpointId === endpointId) {
+            this._voiceEndpointId = null
+            this._handleVoiceHangup()
+        }
+
+        const session = await this.openSessionWithToken({
+            endpointId,
+            mode: 'text',
+            token: downgrade,
+            endpointName,
+            appName,
+        })
+
+        if (priorMessages.length > 0) {
+            session.importMessages(priorMessages)
+        }
+
+        return session
+    }
+
     /** Hang up the active voice call (if any) and tear down WebRTC. */
     async endCall(): Promise<void> {
-        if (!this._voiceEndpointId) return
+        const endpointId = this._voiceEndpointId
+        if (!endpointId) return
         await this._hangup()
-        await this.endSession(this._voiceEndpointId, 'voice_conversation')
+        await this.endSession(endpointId, 'voice_conversation')
     }
 
     // -------------------------------------------------------------------------
@@ -1520,7 +1814,7 @@ export class DelphiClient {
                 break
             case 'hangup':
                 logDebug('Gateway hangup')
-                this._handleVoiceHangup()
+                this._handleRemoteVoiceHangup()
                 break
             case 'detached':
                 this._webrtc.gatewayHandleId = null
@@ -1588,7 +1882,7 @@ export class DelphiClient {
             case 'declining':
             case 'missed':
                 logDebug('SIP call ended:', event)
-                this._handleVoiceHangup()
+                this._handleRemoteVoiceHangup()
                 break
         }
     }
@@ -1691,6 +1985,7 @@ export class DelphiClient {
     }
 
     private _handleVoiceHangup(): void {
+        this._voiceEndpointId = null
         this._setVoiceState({
             inCall: false,
             calling: false,
@@ -1710,6 +2005,16 @@ export class DelphiClient {
         this._setStatus('Disconnected')
         this._cleanupMedia()
         clearSessionState()
+    }
+
+    private _handleRemoteVoiceHangup(): void {
+        const endpointId = this._voiceEndpointId
+        this._handleVoiceHangup()
+        if (endpointId) {
+            void this.endSession(endpointId, 'voice_conversation').catch((error) => {
+                logger.warn('Failed to close voice session after remote hangup:', error)
+            })
+        }
     }
 
     // -------------------------------------------------------------------------

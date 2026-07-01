@@ -140,6 +140,15 @@ etc.). React apps can use `useDelphiSession({ endpointId, mode: 'listen', … })
 and call `listen(...)` once `serverReady` is true — see
 `examples/react/src/components/InterpretationDemo.tsx`.
 
+### Text chat (`mode: 'text'`)
+
+Pure text sessions run the flow's `web_chat` entry point with no audio. The
+React example app includes `TextChatDemo` (`examples/react/src/components/TextChatDemo.tsx`):
+set `VITE_TEXT_CHAT_ENDPOINT_ID` to a `WEB_CHAT` endpoint, send messages via
+`useDelphiSession({ mode: 'text' })`, and optionally call
+`delphi.upgradeToVoice({ endpointId, autoDial: true })` to continue the same
+session as a WebRTC call.
+
 ## Configuration
 
 ```ts

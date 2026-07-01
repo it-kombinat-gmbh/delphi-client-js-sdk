@@ -4,6 +4,7 @@ import { DelphiClientProvider } from '../../../src/react'
 
 import { ReadAloudDemo } from './components/ReadAloudDemo'
 import { InterpretationDemo } from './components/InterpretationDemo'
+import { TextChatDemo } from './components/TextChatDemo'
 import { WebRTCPhone } from './components/WebRTCPhone'
 
 /**
@@ -87,6 +88,7 @@ export default function App() {
                         )}
                     </section>
                     <ReadAloudDemo />
+                    <TextChatDemo />
                     <InterpretationDemo />
                     <WebRTCPhone />
                 </main>

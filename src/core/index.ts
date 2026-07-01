@@ -50,6 +50,8 @@ export type {
     SessionTokenResponse,
     OpenSessionOptions,
     StartCallOptions,
+    UpgradeToVoiceOptions,
+    DowngradeToTextOptions,
     ReadAloudOptions,
     ListenOptions,
     RuntimeCapabilities,
