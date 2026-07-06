@@ -113,6 +113,10 @@ export interface SessionState {
   textChatEnabled: boolean;
   messages: ChannelMessage[];
   lastError: Error | null;
+  /** True while a read-aloud / browser-action request has been sent but browser playback has not started yet. */
+  audioRequestPending: boolean;
+  /** True while the SDK is actively playing audio in the browser. */
+  audioPlaying: boolean;
   /** Wall-clock ms of the last outbound send or inbound message. */
   lastActivityAt: number;
 }
@@ -130,6 +134,10 @@ export interface SessionOptions {
   onControl?: (control: ControlPayload, message: ChannelMessage) => void;
   /** Handler for completed runtime audio responses */
   onAudio?: (audio: BrowserAudioEvent, message: ChannelMessage) => void;
+  /** Handler fired when the SDK actually starts playing audio in the browser */
+  onAudioPlaybackStart?: (audio: BrowserAudioEvent) => void;
+  /** Handler fired when browser audio playback finishes */
+  onAudioPlaybackEnd?: (audio: BrowserAudioEvent) => void;
   /** Handler for connection state changes */
   onConnectionChange?: (state: SessionConnectionState) => void;
   /** Handler for errors */
@@ -183,8 +191,13 @@ export class SessionClient {
     textChatEnabled: false,
     messages: [],
     lastError: null,
+    audioRequestPending: false,
+    audioPlaying: false,
     lastActivityAt: 0,
   };
+
+  /** Counter backing {@link SessionState.audioRequestPending}. */
+  private _pendingAudioCount = 0;
 
   private _options: Required<
     Pick<SessionOptions, "autoReconnect" | "reconnectDelay" | "pingInterval">
@@ -223,6 +236,8 @@ export class SessionClient {
   }> = [];
   private _audioPlaybackQueue: Promise<void> = Promise.resolve();
   private _audioPlaybackGeneration = 0;
+  /** Whether the current playback generation has already decremented the pending counter. */
+  private _playbackStartedForGeneration = false;
   private _activeAudio: {
     pause?: () => void;
     currentTime?: number;
@@ -354,6 +369,8 @@ export class SessionClient {
    */
   disconnect(): void {
     this._clearTimers();
+    this.stopAudioPlayback();
+    this._resetAudioPending();
     if (this._ws) {
       this._ws.close(1000, "Client disconnect");
       this._ws = null;
@@ -377,6 +394,7 @@ export class SessionClient {
     this._destroyed = true;
     this._clearTimers();
     this.stopAudioPlayback();
+    this._resetAudioPending();
 
     for (const waiter of this._pendingAudioWaiters) {
       waiter.reject(new Error("Session closed before audio response arrived"));
@@ -563,7 +581,9 @@ export class SessionClient {
     this.stopAudioPlayback();
     const message = createReadAloudMessage(this._sessionId, content, metadata);
     this._addOutboundMessage(message);
-    return this._sendRaw(message);
+    const sent = this._sendRaw(message);
+    if (sent) this._incrementPendingAudio();
+    return sent;
   }
 
   /**
@@ -578,9 +598,22 @@ export class SessionClient {
    */
   sendBrowserAction(payload: BrowserActionPayload): boolean {
     if (!this._sessionId) return false;
+    const isAudio = this._isAudioBrowserAction(payload);
+    if (isAudio) this.stopAudioPlayback();
     const message = createBrowserActionMessage(this._sessionId, payload);
     this._addOutboundMessage(message);
-    return this._sendRaw(message);
+    const sent = this._sendRaw(message);
+    if (sent && isAudio) this._incrementPendingAudio();
+    return sent;
+  }
+
+  private _isAudioBrowserAction(payload: BrowserActionPayload): boolean {
+    const mt = payload.messageType.toLowerCase();
+    return (
+      mt.includes("readaloud") ||
+      mt.includes("transformandread") ||
+      mt.includes("listen")
+    );
   }
 
   /**
@@ -713,6 +746,21 @@ export class SessionClient {
     });
   }
 
+  private _incrementPendingAudio(): void {
+    this._pendingAudioCount++;
+    this._updateState({ audioRequestPending: this._pendingAudioCount > 0 });
+  }
+
+  private _decrementPendingAudio(): void {
+    this._pendingAudioCount = Math.max(0, this._pendingAudioCount - 1);
+    this._updateState({ audioRequestPending: this._pendingAudioCount > 0 });
+  }
+
+  private _resetAudioPending(): void {
+    this._pendingAudioCount = 0;
+    this._updateState({ audioRequestPending: false, audioPlaying: false });
+  }
+
   /**
    * Stop the current browser audio blob and clear queued blobs. Incoming
    * segments for the same in-flight server request can still enqueue again.
@@ -720,6 +768,8 @@ export class SessionClient {
   stopAudioPlayback(): void {
     this._audioPlaybackGeneration += 1;
     this._audioPlaybackQueue = Promise.resolve();
+    this._playbackStartedForGeneration = false;
+    this._updateState({ audioPlaying: false });
     if (this._activeAudio) {
       try {
         this._activeAudio.pause?.();
@@ -1054,7 +1104,10 @@ export class SessionClient {
       this._resolveAudioWaiters(completedEvent);
 
       if (this._options.autoPlayAudio !== false) {
-        this._playAudio(dataUrl);
+        this._playAudio(completedEvent);
+      } else {
+        // Playback is handled by the consumer; clear the SDK-level pending flag.
+        this._decrementPendingAudio();
       }
     }
   }
@@ -1168,21 +1221,33 @@ export class SessionClient {
     return audio.isFinal ?? booleanMetadata(audio.metadata, "isFinal");
   }
 
-  private _playAudio(dataUrl: string): void {
+  private _playAudio(event: BrowserAudioEvent): void {
     const generation = this._audioPlaybackGeneration;
     this._audioPlaybackQueue = this._audioPlaybackQueue
       .then(() => {
         if (generation !== this._audioPlaybackGeneration) return;
-        return this._playAudioNow(dataUrl, generation);
+        return this._playAudioNow(event, generation);
+      })
+      .then(() => {
+        this._options.onAudioPlaybackEnd?.(event);
+        if (generation === this._audioPlaybackGeneration) {
+          this._updateState({ audioPlaying: false });
+        }
       })
       .catch((error: unknown) => {
-        this._handleError(
-          error instanceof Error ? error : new Error("Failed to play audio"),
-        );
+        if (generation === this._audioPlaybackGeneration) {
+          this._updateState({ audioPlaying: false });
+          this._handleError(
+            error instanceof Error ? error : new Error("Failed to play audio"),
+          );
+        }
       });
   }
 
-  private _playAudioNow(dataUrl: string, generation: number): Promise<void> {
+  private _playAudioNow(
+    event: BrowserAudioEvent,
+    generation: number,
+  ): Promise<void> {
     const AudioCtor = (
       globalThis as unknown as {
         Audio?: new (src?: string) => {
@@ -1202,17 +1267,32 @@ export class SessionClient {
     if (!AudioCtor) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
-      const audio = new AudioCtor(dataUrl);
+      const audio = new AudioCtor(event.dataUrl);
       this._activeAudio = audio;
+
+      const markStarted = () => {
+        if (this._playbackStartedForGeneration) return;
+        this._playbackStartedForGeneration = true;
+        this._decrementPendingAudio();
+        if (generation === this._audioPlaybackGeneration) {
+          this._updateState({ audioPlaying: true });
+          this._options.onAudioPlaybackStart?.(event);
+        }
+      };
+
       const cleanup = () => {
         audio.removeEventListener("ended", onEnded);
         audio.removeEventListener("error", onError);
+        audio.removeEventListener("playing", onPlaying);
         if (this._activeAudio === audio) this._activeAudio = null;
         this._cancelActiveAudio = null;
       };
       this._cancelActiveAudio = () => {
         cleanup();
         resolve();
+      };
+      const onPlaying = () => {
+        markStarted();
       };
       const onEnded = () => {
         cleanup();
@@ -1226,18 +1306,24 @@ export class SessionClient {
         }
         reject(new Error("Failed to load browser audio response"));
       };
+      audio.addEventListener("playing", onPlaying, { once: true });
       audio.addEventListener("ended", onEnded, { once: true });
       audio.addEventListener("error", onError, { once: true });
-      audio.play().catch((error: unknown) => {
-        cleanup();
-        if (generation !== this._audioPlaybackGeneration) {
-          resolve();
-          return;
-        }
-        reject(
-          error instanceof Error ? error : new Error("Failed to play audio"),
-        );
-      });
+      audio.play().then(
+        () => {
+          markStarted();
+        },
+        (error: unknown) => {
+          cleanup();
+          if (generation !== this._audioPlaybackGeneration) {
+            resolve();
+            return;
+          }
+          reject(
+            error instanceof Error ? error : new Error("Failed to play audio"),
+          );
+        },
+      );
     });
   }
 
