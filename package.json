@@ -66,6 +66,7 @@
     "lint": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "lint:fix": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --fix --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
     "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run build",
     "prepare": "husky"
   },
@@ -88,6 +89,7 @@
     "react": "19.2.4",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.1"
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.10"
   }
 }

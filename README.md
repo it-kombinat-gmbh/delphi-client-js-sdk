@@ -82,7 +82,7 @@ const delphi = new DelphiClient({
   apiKey: "sk_live_…",
 });
 
-// One-line read-aloud. Resolves when the audio finishes playing.
+// One-line read-aloud. Resolves when the full logical audio response is delivered.
 await delphi.readAloud("Hello, world!", {
   endpointId: "24599c70-1e79-4e52-9819-e2d97acf45a5",
 });
@@ -204,8 +204,9 @@ const audio = await delphi.readAloud("Welcome back!", {
   endpointId: "24599c70-1e79-4e52-9819-e2d97acf45a5",
 });
 
-// `audio` is the assembled BrowserAudioEvent. The SDK already played it
-// (via new Audio()), but you can replay or download via `audio.dataUrl`.
+// `audio` is the final BrowserAudioEvent. The SDK already queues playback
+// (via new Audio()), including sentence-level MP3 segments when the server
+// sends them. Use audio.segments when you need every playable blob.
 console.log(audio.dataUrl, audio.mimeType, audio.metadata);
 ```
 
@@ -252,7 +253,8 @@ session.setBrowserContext({
 // Trigger any browser action — `readAloud`, `transformAndRead`, custom flows.
 session.sendBrowserAction({ messageType: "browser.action.readAloud" });
 
-// Wait for the AI's audio to finish.
+// Wait for the AI's complete logical audio response. If the server split MP3
+// by sentence, the SDK still queues all segments internally.
 const audio = await session.audioDone();
 
 // Repeat as needed; the session stays open.

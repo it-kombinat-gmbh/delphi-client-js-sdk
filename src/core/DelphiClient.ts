@@ -739,6 +739,7 @@ export class DelphiClient {
     } as Parameters<SessionClient["sendBrowserAction"]>[0];
 
     const audioPromise = session.audioDone();
+    session.stopAudioPlayback();
     const sent = session.sendBrowserAction(payload);
     if (!sent) {
       throw new Error(
