@@ -23,3 +23,6 @@ fly.toml
 Thumbs.db
 .idea/
 .vscode/
+
+# Coverage output
+.coverage-sonar/

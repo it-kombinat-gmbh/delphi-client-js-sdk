@@ -36,9 +36,11 @@ export {
 /** Generate a random alphanumeric string of `len` characters */
 export function randomString(len: number): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    const randomValues = new Uint32Array(len)
+    crypto.getRandomValues(randomValues)
     let result = ''
     for (let i = 0; i < len; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length))
+        result += chars.charAt(randomValues[i]! % chars.length)
     }
     return result
 }
