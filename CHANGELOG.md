@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-27
+
 ### Added
 
 - **Text chat sessions** — `mode: 'text'` sessions can send pure text messages
@@ -14,8 +16,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Text ↔ voice handoff** — `DelphiClient.upgradeToVoice()` and
   `DelphiClient.downgradeToText()` continue the same runtime `sessionId` across
   text chat and WebRTC voice.
+- **Read-aloud playback lifecycle** — `SessionState.audioRequestPending` /
+  `audioPlaying`, plus `onAudioPlaybackStart` / `onAudioPlaybackEnd` callbacks
+  (also exposed through `useDelphiSession`) so UIs can show a spinner from send
+  until browser playback starts and ends.
 - **React example** — `TextChatDemo` shows text chat plus optional voice upgrade
   with `VITE_TEXT_CHAT_ENDPOINT_ID`.
+
+### Changed
+
+- **Segmented MP3 read-aloud** — when the server splits TTS into sentence-level
+  MP3 segments, the SDK queues and plays them as one logical response;
+  `audioDone()` still resolves once for the full reply.
+- **Interruptible playback** — a new `readAloud` / audio browser-action request
+  immediately stops the currently playing audio and resets the playback queue
+  so the fresh response starts without waiting. Interrupted playback is cancelled
+  gracefully and does not surface a playback error.
+
+### Fixed
+
+- **Weak cryptography** — `randomString` now uses `crypto.getRandomValues`
+  instead of `Math.random`.
 
 ## [0.1.3] - 2026-05-12
 
