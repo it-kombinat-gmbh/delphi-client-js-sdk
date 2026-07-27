@@ -94,10 +94,7 @@ await delphi.readAloud("How are you?", {
 
 // Done? Close the read-aloud session only, or omit the second arg to close
 // every mode for this endpoint.
-await delphi.endSession(
-  "24599c70-1e79-4e52-9819-e2d97acf45a5",
-  "audio_playback",
-);
+await delphi.endSession("24599c70-1e79-4e52-9819-e2d97acf45a5", "audio_playback");
 ```
 
 That's it for the simplest case. The server picks the right read-aloud
@@ -235,6 +232,12 @@ await delphi.readAloud("Some text", {
 });
 ```
 
+> **New read-aloud requests interrupt the currently playing audio.** The
+> SDK stops the previous `<audio>` element and resets its internal playback
+> queue so the new response starts immediately. This is intentional — callers
+> are in control and can always wait for `audioDone()` if they prefer
+> sequential playback.
+
 ### 2. Power-user: explicit session
 
 ```ts
@@ -265,6 +268,20 @@ session.sendBrowserAction({
 await session.audioDone();
 
 await session.close();
+```
+
+To observe the playback lifecycle from the UI (for example, to show a spinner
+from the moment the request is sent until browser playback actually starts):
+
+```ts
+session.updateOptions({
+  onAudioPlaybackStart: (event) => hideSpinner(),
+  onAudioPlaybackEnd: (event) => hideSpinner(),
+});
+
+// `session.getState()` also exposes:
+//   audioRequestPending — request sent, playback not yet started
+//   audioPlaying        — audio is currently playing
 ```
 
 ### 3. Voice call (full WebRTC)
@@ -332,9 +349,7 @@ Before opening a session, you can ask the runtime what an endpoint
 supports:
 
 ```ts
-const capabilities = await delphi.getCapabilities(
-  "24599c70-1e79-4e52-9819-e2d97acf45a5",
-);
+const capabilities = await delphi.getCapabilities("24599c70-1e79-4e52-9819-e2d97acf45a5");
 
 if (!delphi.hasCapability(capabilities, "voice_conversation")) {
   throw new Error("This endpoint does not support voice calls.");
@@ -385,9 +400,9 @@ directly.
 | `setBrowserContext(ctx)`                     | Push durable page context (no AI response).                      |
 | `sendChat(content, opts?)`                   | Generic chat send with full control over response behavior.      |
 | `sendTextChat(content)`                      | Text chat — expects a text response.                             |
-| `sendReadAloud(content)`                     | Text chat — expects a voice response.                            |
+| `sendReadAloud(content)`                     | Text chat — expects a voice response. Interrupts playing audio.  |
 | `sendContextUpdate(content)`                 | Append context, no AI response.                                  |
-| `sendBrowserAction(payload)`                 | Trigger a BOA side-flow.                                         |
+| `sendBrowserAction(payload)`                 | Trigger a BOA side-flow. Audio BOAs interrupt playing audio.     |
 | `listen(opts)`                               | Subscribe to an interpretation stream (`browser.action.listen`). |
 | `enableTextChat() / disableTextChat()`       | Toggle the AI's text-chat mode.                                  |
 | `setResponseMode('voice'\|'text'\|'both')`   | Switch AI output modality.                                       |
@@ -399,6 +414,31 @@ directly.
 | `touch()`                                    | Manually reset the idle timer.                                   |
 | `close()`                                    | Close the session (also de-registers from `DelphiClient`).       |
 | `onClose(cb)`                                | Register a one-shot close callback.                              |
+| `updateOptions(opts)`                        | Update callbacks/runtime options such as `onAudioPlaybackStart`. |
+
+### Session state
+
+`session.getState()` returns a reactive snapshot with audio lifecycle fields
+useful for UI feedback:
+
+```ts
+const {
+  connected,
+  serverReady,
+  audioRequestPending, // true after sendReadAloud/sendBrowserAction until playback starts
+  audioPlaying, // true while the SDK is actively playing audio
+} = session.getState();
+```
+
+Hook into actual playback moments:
+
+```ts
+session.updateOptions({
+  onAudio: (event, message) => console.log("audio assembled", event.responseId),
+  onAudioPlaybackStart: (event) => console.log("browser playback started"),
+  onAudioPlaybackEnd: (event) => console.log("browser playback finished"),
+});
+```
 
 ## Browser actions (BOA)
 
@@ -481,10 +521,11 @@ WebSocket.
 
 ```tsx
 function ReadAloudWidget({ endpointId }: { endpointId: string }) {
-  const { connected, sendReadAloud, audioDone } = useDelphiSession({
-    endpointId,
-    mode: "audio_playback",
-  });
+  const { connected, sendReadAloud, audioDone, audioRequestPending, audioPlaying } =
+    useDelphiSession({
+      endpointId,
+      mode: "audio_playback",
+    });
 
   return (
     <button
@@ -494,11 +535,14 @@ function ReadAloudWidget({ endpointId }: { endpointId: string }) {
         await audioDone();
       }}
     >
-      Speak
+      {audioRequestPending ? "Synthesizing…" : audioPlaying ? "Playing…" : "Speak"}
     </button>
   );
 }
 ```
+
+`useDelphiSession` also accepts `onAudioPlaybackStart` / `onAudioPlaybackEnd`
+callbacks for imperative UI updates.
 
 ### useBrowserAction
 
@@ -530,19 +574,16 @@ const { sendReadAloud, connected } = useDelphiSession({
   mode: "audio_playback",
 });
 
-const { selectedText, handleReadAloudSelected, showReadAloudFab } =
-  useSelectionTracking({
-    sendReadAloud,
-    channelConnected: connected,
-    forceEnable: true, // disable the in-call gating
-  });
+const { selectedText, handleReadAloudSelected, showReadAloudFab } = useSelectionTracking({
+  sendReadAloud,
+  channelConnected: connected,
+  forceEnable: true, // disable the in-call gating
+});
 
 return (
   <>
     <article>…</article>
-    {showReadAloudFab && (
-      <button onClick={handleReadAloudSelected}>🔊 Read selected</button>
-    )}
+    {showReadAloudFab && <button onClick={handleReadAloudSelected}>🔊 Read selected</button>}
   </>
 );
 ```
