@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-10
+
+### Added
+
+- **Browser Targeted Actions (BTA)** naming and helpers: `createBrowserActionHandler`,
+  `publishBrowserContext`, `setNavigationCatalog`.
+- **`BrowserContext.readyState` / `navigation`** — host pages can publish current
+  location readiness and a links/searchResults catalog for the AI.
+- **React example** — two-page BTA demo (`/demo/home`, `/demo/products`) with
+  `navigate` / `navigate_current`, `show_alert`, and custom `run_search`.
+
+### Changed
+
+- **`navigate` + `target: '_self'`** now uses the SPA / History path (same as
+  `navigate_current`) for backward compatibility with older flow tools.
+- `useBrowserAction` / exports document BTA vs BOA (Browser Originated Actions).
+
 ## [0.1.4] - 2026-07-27
 
 ### Added

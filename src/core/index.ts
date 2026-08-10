@@ -25,20 +25,23 @@ export type {
     ListenOptions as SessionListenOptions,
 } from './SessionClient'
 
-// ── Browser actions (pure function — no React) ────────────────────────────────
-export { executeBrowserAction } from './browserActions'
+// ── Browser Targeted Actions (BTA — pure functions, no React) ─────────────────
+export { createBrowserActionHandler, executeBrowserAction } from './browserActions'
 export type {
     BrowserActionResult,
     BrowserActionSyncResult,
     BrowserActionAsyncResult,
     BrowserActionHandler,
     BrowserActionName,
+    CreateBrowserActionHandlerOptions,
     CustomBrowserActionParameters,
     ExecuteBrowserActionOptions,
     NavigateActionParameters,
     NavigateCallback,
     ShowAlertActionParameters,
 } from './browserActions'
+
+export { publishBrowserContext, setNavigationCatalog } from './browserContext'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type {
@@ -73,6 +76,9 @@ export type {
     ControlCommand,
     ResponseMode,
     BrowserContext,
+    BrowserNavigationCatalog,
+    BrowserNavigationLink,
+    BrowserReadyState,
     BrowserSelectionContext,
     ChatPayload,
     ControlPayload,

@@ -440,12 +440,19 @@ session.updateOptions({
 });
 ```
 
-## Browser actions (BOA)
+## Browser Targeted Actions (BTA)
 
-When the AI tells the browser to do something (`navigate`, `show_alert`,
-`copy_to_clipboard`, `set_storage`, custom flows…), the SDK delivers it
-via the session's `onAction` callback. The headless `executeBrowserAction`
-helper covers the standard ones:
+**BTA** = runtime/AI → browser (`type: 'action'`). Distinct from **BOA**
+(Browser Originated Actions: browser → runtime via `sendBrowserAction` /
+`type: 'browser_action'` for read-aloud, listen, etc.).
+
+When the AI tells the browser to do something (`navigate`, `navigate_current`,
+`show_alert`, custom handlers…), the SDK delivers it via the session's
+`onAction` callback. The headless `executeBrowserAction` helper covers the
+standard ones:
+
+- `navigate` — `window.open` (new tab); pass `target: '_self'` for SPA path
+- `navigate_current` — host `onNavigate` or History API (SPA routers)
 
 ```ts
 import { executeBrowserAction } from "@ki-kombinat/delphi-client-js-sdk";

@@ -39,7 +39,8 @@ export default function App() {
                         Delphi Client SDK – React Example
                     </h1>
                     <p className="text-gray-500 mt-2">
-                        A minimal Vite + React + Tailwind demo of the headless WebRTC softphone.
+                        Vite + React demo: WebRTC softphone, BOA (read-aloud / listen), and BTA
+                        (navigate / alert / custom search) against two demo pages.
                     </p>
                 </header>
                 <main className="max-w-2xl mx-auto space-y-6">

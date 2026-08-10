@@ -12,7 +12,19 @@ export { useDelphiClientState, useDelphiClient } from './useDelphiClient'
 export { useDelphiSession } from './useDelphiSession'
 export type { UseDelphiSessionOptions, UseDelphiSessionReturn } from './useDelphiSession'
 export { useBrowserAction } from './useBrowserAction'
-export type { ExecuteBrowserActionOptions, BrowserActionHandler } from '../core/browserActions'
+export type {
+    BrowserActionHandler,
+    CreateBrowserActionHandlerOptions,
+    ExecuteBrowserActionOptions,
+    NavigateCallback,
+} from '../core/browserActions'
+export { createBrowserActionHandler, executeBrowserAction } from '../core/browserActions'
+export { publishBrowserContext, setNavigationCatalog } from '../core/browserContext'
+export type {
+    BrowserNavigationCatalog,
+    BrowserNavigationLink,
+    BrowserReadyState,
+} from '../core/channelTypes'
 export { useSelectionTracking } from './useSelectionTracking'
 
 // ── Components ────────────────────────────────────────────────────────────────
