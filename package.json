@@ -62,13 +62,14 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "clean": "rm -rf .turbo node_modules dist",
-    "format": "prettier --check . --ignore-path ../../.gitignore",
+    "format": "prettier --check . --ignore-path .gitignore",
     "lint": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "lint:fix": "eslint \"*.{js,mjs,ts}\" \"src/**/*.{js,jsx,ts,tsx}\" --fix --no-error-on-unmatched-pattern --cache --cache-location \"node_modules/.cache/.eslintcache\"",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run build",
-    "prepare": "husky"
+    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run test && pnpm run build",
+    "prepare": "husky",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "react": ">=18.0.0"
@@ -90,6 +91,18 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.11"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "brace-expansion": "^5.0.9",
+      "postcss": "^8.5.23",
+      "nanoid@3": "^3.3.18",
+      "browserslist": "^4.28.7",
+      "baseline-browser-mapping": "^2.11.0"
+    }
   }
 }

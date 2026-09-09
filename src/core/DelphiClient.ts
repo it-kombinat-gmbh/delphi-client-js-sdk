@@ -161,6 +161,15 @@ function supportedInteractionModes(
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000; // 5 minutes
 const DEFAULT_READ_ALOUD_MESSAGE_TYPE = "browser.action.readAloud";
 
+function gatewayErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (value !== null && typeof value === "object" && "reason" in value) {
+    const reason = value.reason;
+    if (typeof reason === "string" && reason.length > 0) return reason;
+  }
+  return fallback;
+}
+
 /**
  * Top-level Delphi SDK orchestrator.
  *
@@ -196,13 +205,13 @@ const DEFAULT_READ_ALOUD_MESSAGE_TYPE = "browser.action.readAloud";
 export class DelphiClient {
   private _config: DelphiConfig;
   private _state: DelphiClientState;
-  private _webrtc: WebRTCGatewayRefs;
-  private _media: MediaRefs;
+  private readonly _webrtc: WebRTCGatewayRefs;
+  private readonly _media: MediaRefs;
   private _pendingReconnect: PersistedSessionState | null = null;
   private _sessionStateTimer: ReturnType<typeof setInterval> | null = null;
-  private _listeners: Set<() => void> = new Set();
+  private readonly _listeners: Set<() => void> = new Set();
   private _destroyed = false;
-  private _sessions: Map<string, SessionEntry> = new Map();
+  private readonly _sessions: Map<string, SessionEntry> = new Map();
   /** The endpoint whose voice session is currently active, if any. */
   private _voiceEndpointId: string | null = null;
 
@@ -945,7 +954,10 @@ export class DelphiClient {
 
     await this._initWebRTCGateway(resolvedTelproDomain, resolvedGatewayUrl);
 
-    if (autoDial && this._state.voiceCall.registered) {
+    if (
+      this._state.voiceCall.autoDialPending &&
+      this._state.voiceCall.registered
+    ) {
       this._setVoiceState({ autoDialPending: false });
       void this._dial();
     }
@@ -1018,7 +1030,10 @@ export class DelphiClient {
     this._setVoiceState({ autoDialPending: autoDial });
     await this._initWebRTCGateway(domain, gw);
 
-    if (autoDial && this._state.voiceCall.registered) {
+    if (
+      this._state.voiceCall.autoDialPending &&
+      this._state.voiceCall.registered
+    ) {
       this._setVoiceState({ autoDialPending: false });
       void this._dial();
     }
@@ -1894,9 +1909,10 @@ export class DelphiClient {
         clearTimeout(timeout);
         this._webrtc.transactions.delete(transaction);
         if (response["janus"] === "error") {
-          const err = response["error"] as Record<string, unknown> | undefined;
           reject(
-            new Error(String(err?.["reason"] ?? err ?? "WebRTC gateway error")),
+            new Error(
+              gatewayErrorMessage(response["error"], "WebRTC gateway error"),
+            ),
           );
         } else {
           resolve(response);
@@ -1947,9 +1963,9 @@ export class DelphiClient {
         this._webrtc.gatewayHandleId = null;
         break;
       case "error": {
-        const err = msg["error"] as Record<string, unknown> | undefined;
-        const errMsg = String(
-          err?.["reason"] ?? "Unknown WebRTC gateway error",
+        const errMsg = gatewayErrorMessage(
+          msg["error"],
+          "Unknown WebRTC gateway error",
         );
         logDebug("Gateway error event:", errMsg);
         if (errMsg.includes("No such session")) {
@@ -1991,7 +2007,7 @@ export class DelphiClient {
       case "registration_failed":
         this._setVoiceState({ registered: false });
         this._setStatus(
-          `Registration failed: ${String(result?.["reason"] ?? "Unknown")}`,
+          `Registration failed: ${gatewayErrorMessage(result?.["reason"], "Unknown")}`,
         );
         this._pendingReconnect = null;
         clearSessionState();
