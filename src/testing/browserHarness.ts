@@ -6,6 +6,7 @@ export class Socket {
   static CONNECTING = 0;
   static instances: Socket[] = [];
   static autoOpen = true;
+  static nextGatewayError: unknown = null;
   readyState = 0;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
@@ -17,6 +18,12 @@ export class Socket {
     this.sent.push(msg);
     if (!this.protocol || ["trickle", "keepalive"].includes(msg.janus)) return;
     queueMicrotask(() => {
+      if (Socket.nextGatewayError !== null) {
+        const error = Socket.nextGatewayError;
+        Socket.nextGatewayError = null;
+        this.receive({ janus: "error", transaction: msg.transaction, error });
+        return;
+      }
       this.receive({
         janus: "success",
         transaction: msg.transaction,
@@ -97,6 +104,7 @@ export function installBrowser(): {
 } {
   Socket.instances = [];
   Socket.autoOpen = true;
+  Socket.nextGatewayError = null;
   Peer.instances = [];
   AudioPlayer.instances = [];
   const storage = new Map<string, string>();

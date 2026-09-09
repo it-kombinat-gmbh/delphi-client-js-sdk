@@ -296,3 +296,45 @@ describe("voice gateway and media lifecycle", () => {
     expect(client.getState().voiceCall.registered).toBe(false);
   });
 });
+
+describe("auto-dial ownership and gateway errors", () => {
+  it("dials once when reusing an already registered voice gateway", async () => {
+    await client.startCall({ endpointId: "ep" });
+    await client.startCall({ endpointId: "ep", autoDial: true });
+    await flush();
+    expect(browser.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(
+      gateway().sent.filter((m) => m.body?.request === "call"),
+    ).toHaveLength(1);
+  });
+  it("dials once when upgrading text alongside an existing registered voice session", async () => {
+    await client.startCall({ endpointId: "ep" });
+    await client.openSession({ endpointId: "ep", mode: "text" });
+    await flush();
+    await client.upgradeToVoice({ endpointId: "ep", autoDial: true });
+    await flush();
+    expect(browser.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(
+      gateway().sent.filter((m) => m.body?.request === "call"),
+    ).toHaveLength(1);
+  });
+  it.each([
+    [{ reason: "Access denied" }, "Access denied"],
+    ["Unavailable", "Unavailable"],
+    [{ reason: { unexpected: true } }, "WebRTC gateway error"],
+    ["", "WebRTC gateway error"],
+  ])("reports usable transaction errors for %j", async (error, expected) => {
+    Socket.nextGatewayError = error;
+    await expect(client.startCall({ endpointId: "ep" })).rejects.toThrow(
+      expected as string,
+    );
+    expect(client.getState().voiceCall.initialized).toBe(false);
+  });
+  it("uses a clear fallback for malformed registration and unsolicited gateway errors", async () => {
+    await client.startCall({ endpointId: "ep" });
+    gateway().sip("registration_failed", { reason: { invalid: true } });
+    expect(client.getState().status).toBe("Registration failed: Unknown");
+    gateway().receive({ janus: "error", error: {} });
+    expect(client.getState().voiceCall.registered).toBe(false);
+  });
+});
