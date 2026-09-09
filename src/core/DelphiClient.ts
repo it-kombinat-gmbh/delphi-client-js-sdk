@@ -945,7 +945,10 @@ export class DelphiClient {
 
     await this._initWebRTCGateway(resolvedTelproDomain, resolvedGatewayUrl);
 
-    if (autoDial && this._state.voiceCall.registered) {
+    if (
+      this._state.voiceCall.autoDialPending &&
+      this._state.voiceCall.registered
+    ) {
       this._setVoiceState({ autoDialPending: false });
       void this._dial();
     }
@@ -1018,7 +1021,10 @@ export class DelphiClient {
     this._setVoiceState({ autoDialPending: autoDial });
     await this._initWebRTCGateway(domain, gw);
 
-    if (autoDial && this._state.voiceCall.registered) {
+    if (
+      this._state.voiceCall.autoDialPending &&
+      this._state.voiceCall.registered
+    ) {
       this._setVoiceState({ autoDialPending: false });
       void this._dial();
     }
