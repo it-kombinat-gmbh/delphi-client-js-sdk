@@ -94,7 +94,10 @@ await delphi.readAloud("How are you?", {
 
 // Done? Close the read-aloud session only, or omit the second arg to close
 // every mode for this endpoint.
-await delphi.endSession("24599c70-1e79-4e52-9819-e2d97acf45a5", "audio_playback");
+await delphi.endSession(
+  "24599c70-1e79-4e52-9819-e2d97acf45a5",
+  "audio_playback",
+);
 ```
 
 That's it for the simplest case. The server picks the right read-aloud
@@ -349,7 +352,9 @@ Before opening a session, you can ask the runtime what an endpoint
 supports:
 
 ```ts
-const capabilities = await delphi.getCapabilities("24599c70-1e79-4e52-9819-e2d97acf45a5");
+const capabilities = await delphi.getCapabilities(
+  "24599c70-1e79-4e52-9819-e2d97acf45a5",
+);
 
 if (!delphi.hasCapability(capabilities, "voice_conversation")) {
   throw new Error("This endpoint does not support voice calls.");
@@ -440,12 +445,19 @@ session.updateOptions({
 });
 ```
 
-## Browser actions (BOA)
+## Browser Targeted Actions (BTA)
 
-When the AI tells the browser to do something (`navigate`, `show_alert`,
-`copy_to_clipboard`, `set_storage`, custom flows…), the SDK delivers it
-via the session's `onAction` callback. The headless `executeBrowserAction`
-helper covers the standard ones:
+**BTA** = runtime/AI → browser (`type: 'action'`). Distinct from **BOA**
+(Browser Originated Actions: browser → runtime via `sendBrowserAction` /
+`type: 'browser_action'` for read-aloud, listen, etc.).
+
+When the AI tells the browser to do something (`navigate`, `navigate_current`,
+`show_alert`, custom handlers…), the SDK delivers it via the session's
+`onAction` callback. The headless `executeBrowserAction` helper covers the
+standard ones:
+
+- `navigate` — `window.open` (new tab); pass `target: '_self'` for SPA path
+- `navigate_current` — host `onNavigate` or History API (SPA routers)
 
 ```ts
 import { executeBrowserAction } from "@ki-kombinat/delphi-client-js-sdk";
@@ -521,11 +533,16 @@ WebSocket.
 
 ```tsx
 function ReadAloudWidget({ endpointId }: { endpointId: string }) {
-  const { connected, sendReadAloud, audioDone, audioRequestPending, audioPlaying } =
-    useDelphiSession({
-      endpointId,
-      mode: "audio_playback",
-    });
+  const {
+    connected,
+    sendReadAloud,
+    audioDone,
+    audioRequestPending,
+    audioPlaying,
+  } = useDelphiSession({
+    endpointId,
+    mode: "audio_playback",
+  });
 
   return (
     <button
@@ -535,7 +552,11 @@ function ReadAloudWidget({ endpointId }: { endpointId: string }) {
         await audioDone();
       }}
     >
-      {audioRequestPending ? "Synthesizing…" : audioPlaying ? "Playing…" : "Speak"}
+      {audioRequestPending
+        ? "Synthesizing…"
+        : audioPlaying
+          ? "Playing…"
+          : "Speak"}
     </button>
   );
 }
@@ -574,16 +595,19 @@ const { sendReadAloud, connected } = useDelphiSession({
   mode: "audio_playback",
 });
 
-const { selectedText, handleReadAloudSelected, showReadAloudFab } = useSelectionTracking({
-  sendReadAloud,
-  channelConnected: connected,
-  forceEnable: true, // disable the in-call gating
-});
+const { selectedText, handleReadAloudSelected, showReadAloudFab } =
+  useSelectionTracking({
+    sendReadAloud,
+    channelConnected: connected,
+    forceEnable: true, // disable the in-call gating
+  });
 
 return (
   <>
     <article>…</article>
-    {showReadAloudFab && <button onClick={handleReadAloudSelected}>🔊 Read selected</button>}
+    {showReadAloudFab && (
+      <button onClick={handleReadAloudSelected}>🔊 Read selected</button>
+    )}
   </>
 );
 ```
@@ -702,3 +726,29 @@ publish. `engines.node >= 18` is declared.
 ## License
 
 MIT — © Ki-Kombinat. See [LICENSE](LICENSE).
+
+## Contributing and platform integration
+
+Use Node 24 and `corepack pnpm` (the version is pinned in `package.json`).
+This repository owns its tests, dependency audit, and SonarQube analysis, even
+when checked out inside the platform as a submodule. Validate a standalone
+checkout so platform dependency overrides cannot conceal SDK problems.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm type-check
+pnpm test:coverage
+pnpm build
+pnpm --filter @ki-kombinat/delphi-client-react-example build
+pnpm audit
+```
+
+Create a feature branch and PR in this repository first. After it merges, update
+the platform's submodule pointer in a linked PR and run integration checks.
+Committing the platform does not commit SDK files. See [AGENTS.md](AGENTS.md)
+for the cross-repository working rules.
+
+`SDK checks` validates the standalone SDK and React example. `SDK SonarQube`
+imports LCOV coverage and waits for the project's quality gate; both checks
+are required on `main`. The workflow uses the repository `SONAR_TOKEN` secret.

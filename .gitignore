@@ -26,3 +26,6 @@ Thumbs.db
 
 # Coverage output
 .coverage-sonar/
+
+coverage/
+.eslintcache

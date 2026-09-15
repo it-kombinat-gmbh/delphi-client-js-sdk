@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useSyncExternalStore } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import {
     useDelphiClientContext,
@@ -6,6 +6,9 @@ import {
     useSelectionTracking,
     useBrowserAction,
 } from '../../../../src/react'
+import type { BrowserActionHandler, BrowserContext } from '../../../../src/core'
+
+import { BtaDemoSites, runDemoSearch } from './BtaDemoSites'
 
 /**
  * A fully functional headless WebRTC softphone UI built with Tailwind CSS.
@@ -13,7 +16,7 @@ import {
  * Demonstrates the v0.1 SDK shape:
  *   - Voice call lifecycle via `delphi.startCall()` / `delphi.endCall()`.
  *   - Long-lived per-endpoint sessions via `useDelphiSession({ endpointId, mode })`.
- *   - Browser actions (AI tool calls).
+ *   - Browser Targeted Actions (BTA — AI → browser tool calls).
  *   - DTMF dialpad.
  *   - Audio-blocked / reconnect-after-reload handling.
  *   - Text selection → read-aloud floating action button.
@@ -74,14 +77,64 @@ export function WebRTCPhone() {
         }
     }, [delphi])
 
-    // Channel-side handlers (browser actions). The session is bound below.
-    const handleBrowserAction = useBrowserAction()
+    const [searchResults, setSearchResults] = useState<
+        Array<{ id?: string; title?: string; url: string; snippet?: string }>
+    >([])
+
+    const onNavigate = useCallback((path: string) => {
+        const nav = (window as unknown as { __delphiDemoNavigate?: (p: string) => void })
+            .__delphiDemoNavigate
+        if (nav) nav(path)
+        else {
+            window.history.pushState({}, '', path)
+            window.dispatchEvent(new PopStateEvent('popstate'))
+        }
+    }, [])
+
+    const setBrowserContextRef = useRef<(ctx: BrowserContext) => boolean>(() => false)
+
+    const run_search = useCallback<BrowserActionHandler>(
+        (action) => {
+            const query = String(action.parameters['query'] ?? '')
+            const hits = runDemoSearch(query)
+            setSearchResults(hits)
+            onNavigate('/demo/products')
+            setBrowserContextRef.current({
+                url: '/demo/products',
+                title: 'Demo Products',
+                readyState: 'ready',
+                source: 'search',
+                navigation: {
+                    links: [
+                        { id: 'home', url: '/demo/home', title: 'Demo Home' },
+                        { id: 'products', url: '/demo/products', title: 'Demo Products' },
+                    ],
+                    searchQuery: query,
+                    searchResults: hits,
+                },
+            })
+            return { success: true, data: { count: hits.length, results: hits } }
+        },
+        [onNavigate],
+    )
+
+    const btaOptions = useMemo(
+        () => ({
+            onNavigate,
+            customHandlers: { run_search },
+        }),
+        [onNavigate, run_search],
+    )
+
+    // Channel-side handlers (BTA). The session is bound below.
+    const handleBrowserAction = useBrowserAction(btaOptions)
 
     const {
         connected: channelConnected,
         textChatEnabled,
         messages,
         sendContextUpdate,
+        setBrowserContext,
         sendTextChat,
         sendReadAloud,
         enableTextChat,
@@ -93,6 +146,10 @@ export function WebRTCPhone() {
         appName,
         onAction: handleBrowserAction,
     })
+
+    useEffect(() => {
+        setBrowserContextRef.current = setBrowserContext
+    }, [setBrowserContext])
 
     const { selectedText, handleReadAloudSelected, showReadAloudFab } = useSelectionTracking({
         sendReadAloud,
@@ -132,6 +189,12 @@ export function WebRTCPhone() {
 
     return (
         <div className="space-y-6">
+            <BtaDemoSites
+                setBrowserContext={setBrowserContext}
+                searchResults={searchResults}
+                onSearchResultsClear={() => setSearchResults([])}
+            />
+
             {/* Read-aloud FAB */}
             {showReadAloudFab && (
                 <button

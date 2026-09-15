@@ -18,6 +18,8 @@ export type BrowserActionName =
 
 export interface NavigateActionParameters {
     url: string
+    /** For `navigate`: `_blank` (default) opens a new tab; `_self` uses SPA / current-tab navigation. */
+    target?: '_blank' | '_self' | string
 }
 
 export interface ShowAlertActionParameters {
@@ -66,6 +68,11 @@ export interface ExecuteBrowserActionOptions {
     onUnknownAction?: BrowserActionHandler
 }
 
+/**
+ * Alias for {@link ExecuteBrowserActionOptions} — preferred name in BTA docs.
+ */
+export type CreateBrowserActionHandlerOptions = ExecuteBrowserActionOptions
+
 function normalizeOptions(
     optionsOrNavigate?: ExecuteBrowserActionOptions | NavigateCallback,
 ): ExecuteBrowserActionOptions {
@@ -79,14 +86,48 @@ function customActionKey(action: Pick<ActionPayload, 'name' | 'parameters'>): st
     return typeof type === 'string' && type.trim().length > 0 ? type : action.name
 }
 
+function navigateCurrentPath(
+    url: string,
+    options: ExecuteBrowserActionOptions,
+): BrowserActionResult {
+    const isInternal = url.startsWith('/') || url.startsWith(window.location.origin)
+
+    if (isInternal) {
+        const path = url.startsWith('/') ? url : url.replace(window.location.origin, '')
+
+        if (options.onNavigate) {
+            options.onNavigate(path)
+            return { success: true, data: { url: path, method: 'callback' } }
+        }
+        // Fallback to History API (works with most SPA routers)
+        window.history.pushState({}, '', path)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        return { success: true, data: { url: path, method: 'history' } }
+    }
+
+    window.location.href = url
+    return { success: true, data: { url, method: 'full' } }
+}
+
 /**
- * Execute a browser action dispatched by the AI.
+ * Build a stable `onAction` handler for Browser Targeted Actions (BTA).
+ * Thin wrapper around {@link executeBrowserAction}.
+ */
+export function createBrowserActionHandler(
+    optionsOrNavigate?: ExecuteBrowserActionOptions | NavigateCallback,
+): (action: Pick<ActionPayload, 'name' | 'parameters'>) => Promise<BrowserActionResult> {
+    return (action) => executeBrowserAction(action, optionsOrNavigate)
+}
+
+/**
+ * Execute a browser action dispatched by the AI (BTA — Browser Targeted Action).
  *
- * This is a pure function with no React or store dependencies — pass it directly
- * to `SessionClient` as the `onAction` callback, or call it manually.
+ * Dual navigation model:
+ * - `navigate` → `window.open` (new tab) by default; `target: '_self'` uses SPA path
+ * - `navigate_current` → host `onNavigate` or History API for in-app routers
  *
  * @param action     - The action payload from the AI
- * @param onNavigate - Optional SPA-router callback used by `navigate_current`
+ * @param optionsOrNavigate - Handler options or a bare SPA navigate callback
  */
 export async function executeBrowserAction(
     action: Pick<ActionPayload, 'name' | 'parameters'>,
@@ -126,36 +167,27 @@ export async function executeBrowserAction(
         }
 
         // ===================================================================
-        // Navigation actions
+        // Navigation actions (BTA)
         // ===================================================================
         case 'navigate': {
             const url = action.parameters['url'] as string
             if (!url) return { success: false, error: 'No URL provided' }
-            window.open(url, '_blank')
-            return { success: true, data: { url } }
+            const target = (action.parameters['target'] as string | undefined) ?? '_blank'
+            // Compat: STA browsing tools sent navigate + target:_self expecting SPA behavior
+            if (target === '_self') {
+                return navigateCurrentPath(url, options)
+            }
+            window.open(url, target || '_blank')
+            return {
+                success: true,
+                data: { url, target: target || '_blank', method: 'window_open' },
+            }
         }
 
         case 'navigate_current': {
             const url = action.parameters['url'] as string
             if (!url) return { success: false, error: 'No URL provided' }
-
-            const isInternal = url.startsWith('/') || url.startsWith(window.location.origin)
-
-            if (isInternal) {
-                const path = url.startsWith('/') ? url : url.replace(window.location.origin, '')
-
-                if (options.onNavigate) {
-                    options.onNavigate(path)
-                    return { success: true, data: { url: path, method: 'callback' } }
-                }
-                // Fallback to History API (works with most SPA routers)
-                window.history.pushState({}, '', path)
-                window.dispatchEvent(new PopStateEvent('popstate'))
-                return { success: true, data: { url: path, method: 'history' } }
-            }
-
-            window.location.href = url
-            return { success: true, data: { url, method: 'full' } }
+            return navigateCurrentPath(url, options)
         }
 
         // ===================================================================
@@ -276,7 +308,7 @@ export async function executeBrowserAction(
         }
 
         // ===================================================================
-        // Unknown action
+        // Unknown action — allow customHandlers keyed by action name
         // ===================================================================
         default:
             {
