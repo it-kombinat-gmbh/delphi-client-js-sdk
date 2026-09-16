@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@ki-kombinat/delphi-client-js-sdk": "workspace:*",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
