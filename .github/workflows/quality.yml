@@ -49,7 +49,7 @@ jobs:
           name: sdk-coverage
           path: coverage
       - name: Scan and enforce quality gate
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
