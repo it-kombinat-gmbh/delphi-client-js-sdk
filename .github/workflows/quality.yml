@@ -39,6 +39,10 @@ jobs:
   sonar:
     name: SDK SonarQube
     needs: verify
+    # Never analyze runs triggered by Dependabot. A job skipped by `if:`
+    # satisfies the required "SDK SonarQube" check. Keyed on the actor, so a
+    # human push to a Dependabot branch is still analyzed with Actions secrets.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
