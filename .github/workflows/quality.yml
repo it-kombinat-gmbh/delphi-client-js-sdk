@@ -44,15 +44,27 @@ jobs:
     # human push to a Dependabot branch is still analyzed with Actions secrets.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    env:
+      # The scan is off unless the repository variable SONAR_ENABLED is exactly
+      # 'true' (user decision 2026-11-03: Sonar slows CI and the quality gate is
+      # not needed now). The job keeps its required-check name and passes once
+      # "SDK checks" passes; set the variable to scan again.
+      SONAR_ENABLED: ${{ vars.SONAR_ENABLED == 'true' }}
     steps:
+      - name: Report disabled analysis
+        if: env.SONAR_ENABLED != 'true'
+        run: echo "SonarQube analysis disabled (SONAR_ENABLED not set)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v7
+        if: env.SONAR_ENABLED == 'true'
         with:
           fetch-depth: 0
       - uses: actions/download-artifact@v8
+        if: env.SONAR_ENABLED == 'true'
         with:
           name: sdk-coverage
           path: coverage
       - name: Scan and enforce quality gate
+        if: env.SONAR_ENABLED == 'true'
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
