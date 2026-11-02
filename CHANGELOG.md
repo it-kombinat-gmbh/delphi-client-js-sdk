@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Channel token refresh** — the session channel asks the server for fresh
+  tokens (`tokenRefresh=1`) and keeps the newest one for reconnects, so a channel
+  older than the token lifetime can recover after a cut. Servers without this
+  feature ignore the request. No change for customer backends.
+
+### Fixed
+
+- **Reconnect replay** — the resume cursor now travels in the connection URL
+  (`lastId`). The previous `reconnect` frame could reach the server before it
+  listened, which lost the messages sent during the gap.
+- **Refused channels** — a channel refused with a 4001–4099 close code now sets
+  `lastError` and calls `onError`, and `openSession` replaces such a session
+  instead of returning it.
+
 ## [0.1.5] - 2026-08-10
 
 ### Added
