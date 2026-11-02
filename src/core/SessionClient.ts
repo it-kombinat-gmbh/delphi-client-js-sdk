@@ -17,7 +17,6 @@ import {
   createActionAckMessage,
   createAsyncActionResultMessage,
   createActionUpdateChatMessage,
-  createReconnectMessage,
   createPingMessage,
   createEnableTextChatMessage,
   createDisableTextChatMessage,
@@ -180,6 +179,9 @@ export interface SessionOptions {
  * await session.close()
  * ```
  */
+/** Redis stream ids accepted by the `lastId` channel parameter. */
+const STREAM_CURSOR_PATTERN = /^(?:0|\d+-\d+)$/;
+
 export class SessionClient {
   private _state: SessionState = {
     connectionState: "disconnected",
@@ -206,12 +208,16 @@ export class SessionClient {
 
   private _sessionId: string | null = null;
   private _wsToken: string | null = null;
+  /** Token the app passed to connect(); `_wsToken` may have been refreshed since. */
+  private _issuedWsToken: string | null = null;
   private _wsUrl: string = "ws://localhost:3001";
 
   private _ws: WebSocket | null = null;
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private _pingTimer: ReturnType<typeof setInterval> | null = null;
   private _lastStreamId: string | null = null;
+  /** The channel has opened since the cursor was reset, so a reconnect may replay. */
+  private _channelOpened = false;
   private _destroyed = false;
   private _audioBuffers: Map<
     string,
@@ -298,10 +304,10 @@ export class SessionClient {
 
     const isNewSession =
       this._sessionId !== null && this._sessionId !== sessionId;
+    const sameIssuedToken = !isNewSession && this._issuedWsToken === wsToken;
     const alreadyConnected =
-      !isNewSession &&
+      sameIssuedToken &&
       this._sessionId === sessionId &&
-      this._wsToken === wsToken &&
       this._ws !== null &&
       (this._ws.readyState === WebSocket.OPEN ||
         this._ws.readyState === WebSocket.CONNECTING);
@@ -314,7 +320,11 @@ export class SessionClient {
     }
 
     this._sessionId = sessionId;
-    this._wsToken = wsToken;
+    // A repeated connect() with the issued token must not undo a refresh.
+    if (!sameIssuedToken) {
+      this._wsToken = wsToken;
+      this._issuedWsToken = wsToken;
+    }
     if (wsUrl) this._wsUrl = wsUrl;
     logger.info("[SessionClient] Connecting session channel", {
       sessionId,
@@ -326,7 +336,7 @@ export class SessionClient {
 
     if (isNewSession) {
       this._updateState({ messages: [] });
-      this._lastStreamId = null;
+      this._resetStreamCursor();
       try {
         sessionStorage.removeItem(`channel_last_stream:${sessionId}`);
       } catch {
@@ -381,7 +391,7 @@ export class SessionClient {
       textChatEnabled: false,
       sessionId: null,
     });
-    this._lastStreamId = null;
+    this._resetStreamCursor();
     this._sessionId = null;
   }
 
@@ -410,7 +420,7 @@ export class SessionClient {
         /* sessionStorage unavailable — no-op */
       }
     }
-    this._lastStreamId = null;
+    this._resetStreamCursor();
 
     if (this._ws) {
       try {
@@ -448,7 +458,7 @@ export class SessionClient {
   /** Clear the visible message history and the persisted resume cursor. */
   clearMessages(): void {
     this._updateState({ messages: [] });
-    this._lastStreamId = null;
+    this._resetStreamCursor();
     if (this._sessionId) {
       try {
         sessionStorage.removeItem(`channel_last_stream:${this._sessionId}`);
@@ -810,8 +820,9 @@ export class SessionClient {
     this._updateState({ connectionState: "connecting" });
 
     try {
-      const url = `${this._wsUrl}/ws/session?sessionId=${encodeURIComponent(this._sessionId)}&token=${encodeURIComponent(this._wsToken)}`;
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(
+        this._channelUrl(this._sessionId, this._wsToken),
+      );
       this._ws = ws;
 
       ws.onopen = () => {
@@ -819,6 +830,7 @@ export class SessionClient {
         logger.info("[SessionClient] Connected session channel", {
           sessionId: this._sessionId,
         });
+        this._channelOpened = true;
         this._updateState({
           connectionState: "connected",
           connected: true,
@@ -826,14 +838,6 @@ export class SessionClient {
           lastError: null,
           lastActivityAt: Date.now(),
         });
-
-        if (this._lastStreamId && this._sessionId) {
-          ws.send(
-            JSON.stringify(
-              createReconnectMessage(this._sessionId, this._lastStreamId),
-            ),
-          );
-        }
 
         this._pingTimer = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN && this._sessionId) {
@@ -881,6 +885,12 @@ export class SessionClient {
             connected: false,
             serverReady: false,
           });
+          if (event.code >= 4001 && event.code <= 4099) {
+            // Refused for good: the app has to open a new session.
+            this._handleError(
+              new Error(event.reason || `Channel refused (${event.code})`),
+            );
+          }
         }
       };
 
@@ -897,6 +907,33 @@ export class SessionClient {
     }
   }
 
+  private _resetStreamCursor(): void {
+    this._lastStreamId = null;
+    this._channelOpened = false;
+  }
+
+  private _channelUrl(sessionId: string, token: string): string {
+    const params = new URLSearchParams({
+      sessionId,
+      token,
+      tokenRefresh: "1",
+    });
+    // Resume in the handshake: the server may not listen yet when the socket
+    // opens. With no cursor yet, a reopened channel replays from the start.
+    const cursor = this._lastStreamId ?? (this._channelOpened ? "0" : null);
+    if (cursor && STREAM_CURSOR_PATTERN.test(cursor)) {
+      params.set("lastId", cursor);
+    }
+    return `${this._wsUrl}/ws/session?${params.toString()}`;
+  }
+
+  private _applyTokenRefresh(message: ChannelMessage): void {
+    const wsToken = message.tokenRefresh?.wsToken;
+    if (wsToken && message.sessionId === this._sessionId) {
+      this._wsToken = wsToken;
+    }
+  }
+
   private async _handleMessage(event: MessageEvent): Promise<void> {
     if (this._destroyed) return;
 
@@ -909,6 +946,12 @@ export class SessionClient {
     }
 
     if (message.type === "pong" || message.type === "ping") return;
+    // Not activity and not application data: the idle timeout must keep
+    // running, and the token must not reach onMessage or the message list.
+    if (message.type === "token_refresh") {
+      this._applyTokenRefresh(message);
+      return;
+    }
 
     message = { ...message, timestamp: Date.now() };
     this._updateState({ lastActivityAt: Date.now() });

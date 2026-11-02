@@ -64,6 +64,30 @@ describe("session ownership and handoff", () => {
     expect(client.getSession("ep")).toBeNull();
     expect(channel().close).toHaveBeenCalled();
   });
+  it("still closes an idle session that only receives token refreshes", async () => {
+    await client.openSession({ endpointId: "ep", mode: "text" });
+    await flush();
+    await vi.advanceTimersByTimeAsync(700);
+    channel().receive({
+      type: "token_refresh",
+      sessionId: "session-1",
+      tokenRefresh: { wsToken: "fresh", expiresIn: 300 },
+    });
+    await vi.advanceTimersByTimeAsync(301);
+    expect(client.getSession("ep")).toBeNull();
+  });
+  it("replaces a session whose channel was refused for good", async () => {
+    const refused = await client.openSession({
+      endpointId: "ep",
+      mode: "text",
+    });
+    await flush();
+    channel().close(4003, "WebSocket token has expired");
+    expect(refused.getState().lastError).not.toBeNull();
+    const fresh = await client.openSession({ endpointId: "ep", mode: "text" });
+    expect(fresh).not.toBe(refused);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
   it("retains conversation history while upgrading to voice and downgrading to text", async () => {
     const text = await client.openSession({ endpointId: "ep", mode: "text" });
     await flush();

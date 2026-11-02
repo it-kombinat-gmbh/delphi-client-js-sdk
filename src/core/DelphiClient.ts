@@ -161,6 +161,12 @@ function supportedInteractionModes(
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000; // 5 minutes
 const DEFAULT_READ_ALOUD_MESSAGE_TYPE = "browser.action.readAloud";
 
+/** A channel that gave up with an error can only be replaced by a new session. */
+function isRefusedSession(session: SessionClient): boolean {
+  const { connectionState, lastError } = session.getState();
+  return connectionState === "disconnected" && lastError !== null;
+}
+
 function gatewayErrorMessage(value: unknown, fallback: string): string {
   if (typeof value === "string" && value.length > 0) return value;
   if (value !== null && typeof value === "object" && "reason" in value) {
@@ -559,14 +565,11 @@ export class DelphiClient {
 
     const existing = this._sessions.get(key);
     if (existing) {
-      if (
-        mode === "voice_conversation" &&
-        this._voiceEndpointId !== endpointId
-      ) {
-        // A remote hangup clears voice state before the channel close
-        // callback removes the cached session. Do not reuse that stale
-        // session for the next call, because its gateway metadata has
-        // already been cleared.
+      // A remote hangup clears voice state before the channel close callback
+      // removes the cached session, so its gateway metadata is already gone.
+      const voiceHungUp =
+        mode === "voice_conversation" && this._voiceEndpointId !== endpointId;
+      if (voiceHungUp || isRefusedSession(existing.session)) {
         await existing.session.close();
       } else {
         this._touchSession(existing);

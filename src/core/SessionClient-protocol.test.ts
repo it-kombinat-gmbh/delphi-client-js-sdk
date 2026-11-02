@@ -42,7 +42,8 @@ describe("session channel protocol", () => {
   it("resumes the last stream cursor after a transient loss and keeps the channel alive", async () => {
     browser.storage.set("channel_last_stream:s", "10-0");
     const ws = await connect();
-    expect(ws.sent[0]).toMatchObject({ type: "reconnect" });
+    expect(new URL(ws.url).searchParams.get("lastId")).toBe("10-0");
+    expect(ws.sent).toEqual([]);
     ws.receive({
       type: "chat",
       streamId: "11-0",
@@ -59,10 +60,8 @@ describe("session channel protocol", () => {
     await flush();
     expect(socket()).not.toBe(ws);
     expect(session.getState().serverReady).toBe(true);
-    expect(socket().sent[0]).toMatchObject({
-      type: "reconnect",
-      reconnect: { lastReceivedMessageId: "11-0" },
-    });
+    expect(new URL(socket().url).searchParams.get("lastId")).toBe("11-0");
+    expect(socket().sent.some((m) => m.type === "reconnect")).toBe(false);
     session.clearMessages();
     expect(browser.storage.has("channel_last_stream:s")).toBe(false);
     session.connect("different", "new-token");
@@ -70,6 +69,116 @@ describe("session channel protocol", () => {
     expect(
       session.getState().messages.filter((m) => m.type === "chat"),
     ).toEqual([]);
+  });
+  it("asks for token refresh and starts a first channel without a replay cursor", async () => {
+    const params = new URL((await connect()).url).searchParams;
+    expect(params.get("tokenRefresh")).toBe("1");
+    expect(params.get("token")).toBe("t");
+    expect(params.has("lastId")).toBe(false);
+  });
+  it("replays from the start after a loss before any stream message", async () => {
+    const ws = await connect();
+    ws.close(1006);
+    await vi.advanceTimersByTimeAsync(50);
+    await flush();
+    expect(socket()).not.toBe(ws);
+    expect(new URL(socket().url).searchParams.get("lastId")).toBe("0");
+  });
+  it("does not replay messages the app cleared", async () => {
+    const ws = await connect();
+    session.clearMessages();
+    ws.close(1006);
+    await vi.advanceTimersByTimeAsync(50);
+    await flush();
+    expect(new URL(socket().url).searchParams.has("lastId")).toBe(false);
+  });
+  it("skips a stored cursor the server would reject", async () => {
+    browser.storage.set("channel_last_stream:s", "stream-7");
+    const ws = await connect();
+    expect(new URL(ws.url).searchParams.has("lastId")).toBe(false);
+  });
+  describe("token refresh", () => {
+    const refresh = (wsToken: string, sessionId = "s") => ({
+      type: "token_refresh",
+      sessionId,
+      tokenRefresh: { wsToken, expiresIn: 300 },
+    });
+
+    it("reconnects with the refreshed token", async () => {
+      const ws = await connect();
+      ws.receive(refresh("fresh"));
+      ws.close(1006);
+      await vi.advanceTimersByTimeAsync(50);
+      await flush();
+      expect(new URL(socket().url).searchParams.get("token")).toBe("fresh");
+    });
+    it("keeps the frame away from the app and from activity tracking", async () => {
+      const ws = await connect();
+      const onMessage = vi.fn();
+      session.updateOptions({ onMessage });
+      const before = session.getState();
+      const listener = vi.fn();
+      session.subscribe(listener);
+      ws.receive(refresh("fresh"));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
+      expect(session.getState()).toBe(before);
+    });
+    it("ignores a frame for another session or without a token", async () => {
+      const ws = await connect();
+      ws.receive(refresh("other", "not-s"));
+      ws.receive({ type: "token_refresh", sessionId: "s" });
+      ws.close(1006);
+      await vi.advanceTimersByTimeAsync(50);
+      await flush();
+      expect(new URL(socket().url).searchParams.get("token")).toBe("t");
+    });
+    it("treats the issued token as connected after a refresh", async () => {
+      (await connect()).receive(refresh("fresh"));
+      session.connect("s", "t");
+      expect(Socket.instances).toHaveLength(1);
+    });
+    it("keeps the refreshed token when the app repeats connect()", async () => {
+      const ws = await connect();
+      ws.receive(refresh("fresh"));
+      ws.close(1000);
+      session.connect("s", "t");
+      await flush();
+      expect(new URL(socket().url).searchParams.get("token")).toBe("fresh");
+    });
+    it("uses a new token issued by the app", async () => {
+      (await connect()).receive(refresh("fresh"));
+      session.connect("s", "upgraded");
+      await flush();
+      expect(new URL(socket().url).searchParams.get("token")).toBe("upgraded");
+    });
+  });
+  it("surfaces a refused channel as an error and stops", async () => {
+    const onError = vi.fn();
+    session.updateOptions({ onError });
+    const ws = await connect();
+    ws.close(4003, "WebSocket token has expired");
+    expect(session.getState()).toMatchObject({
+      connectionState: "disconnected",
+    });
+    expect(session.getState().lastError?.message).toBe(
+      "WebSocket token has expired",
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(Socket.instances).toHaveLength(1);
+  });
+  it("names the close code when a refusal has no reason", async () => {
+    const ws = await connect();
+    ws.close(4001);
+    expect(session.getState().lastError?.message).toBe(
+      "Channel refused (4001)",
+    );
+  });
+  it("does not report a superseded channel as an error", async () => {
+    const ws = await connect();
+    ws.close(4000, "Superseded by new connection");
+    expect(session.getState().lastError).toBeNull();
   });
   it.each([1000, 4000, 4001, 4099])(
     "does not reconnect a deliberately closed/rejected channel (%i)",

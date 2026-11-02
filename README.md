@@ -665,7 +665,18 @@ useEffect(() => {
 
 `SessionClient` itself auto-reconnects its WebSocket on transient
 disconnects (codes 1006, 1011, etc.) with exponential backoff disabled —
-configurable via `reconnectDelay`.
+configurable via `reconnectDelay`. Any infrastructure between the browser and
+the server can cut a connection at any time, so this is normal behaviour.
+
+While the channel is open, the server sends fresh tokens that the client keeps
+for the next reconnect, and a reconnect resumes the message stream where it
+stopped. During the gap `connectionState` is `reconnecting` and `sendChat`
+returns `false`: nothing is queued, so show the state and let the user resend.
+
+If the server refuses the channel with a 4001–4099 close code (for example, the
+token expired while the device slept), the client stops, `connectionState`
+becomes `disconnected`, `lastError` holds the reason and `onError` fires. Call
+`openSession` again: it replaces the refused session with a new one.
 
 ## Architecture
 
