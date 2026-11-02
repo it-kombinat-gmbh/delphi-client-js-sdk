@@ -760,6 +760,9 @@ the platform's submodule pointer in a linked PR and run integration checks.
 Committing the platform does not commit SDK files. See [AGENTS.md](AGENTS.md)
 for the cross-repository working rules.
 
-`SDK checks` validates the standalone SDK and React example. `SDK SonarQube`
-imports LCOV coverage and waits for the project's quality gate; both checks
-are required on `main`. The workflow uses the repository `SONAR_TOKEN` secret.
+`SDK checks` validates the standalone SDK and React example. Both `SDK checks`
+and `SDK SonarQube` are required on `main`. The SonarCloud scan is currently
+disabled: `SDK SonarQube` runs only after `SDK checks` passes and reports
+"SonarQube analysis disabled (SONAR_ENABLED not set)". When the repository
+variable `SONAR_ENABLED` is set to `true`, it imports LCOV coverage and waits
+for the project's quality gate, using the repository `SONAR_TOKEN` secret.
