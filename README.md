@@ -760,7 +760,9 @@ the platform's submodule pointer in a linked PR and run integration checks.
 Committing the platform does not commit SDK files. See [AGENTS.md](AGENTS.md)
 for the cross-repository working rules.
 
-`SDK checks` validates the standalone SDK and React example. Both `SDK checks`
+`SDK checks` validates the standalone SDK and React example. Its
+`pnpm test:coverage` step fails below 80% overall line coverage of `src/`
+(`thresholds.lines` in `vitest.config.ts`). Both `SDK checks`
 and `SDK SonarQube` are required on `main`. The SonarCloud scan is currently
 disabled: `SDK SonarQube` runs only after `SDK checks` passes and reports
 "SonarQube analysis disabled (SONAR_ENABLED not set)". When the repository

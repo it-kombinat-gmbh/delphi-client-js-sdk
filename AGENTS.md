@@ -14,10 +14,16 @@ lockfile, and quality gate belong to this repository.
   `pnpm test:coverage`, SDK build, React example build, and `pnpm audit`.
 - Keep the core free of runtime dependencies. Prefer supported patch/minor fixes;
   assess major upgrades separately. Do not suppress advisories to make CI pass.
-- SDK Sonar analysis is owned here; platform Sonar excludes the SDK. Keep LCOV
-  reporting and the required SDK checks/Sonar gate enabled. Do not bypass or
-  weaken gates to land changes. Test doubles should be type-correct without
-  disabling lint or TypeScript rules.
+- SDK Sonar analysis is owned here; platform Sonar excludes the SDK. The
+  SonarCloud scan is disabled by default: it runs only when the repository
+  variable `SONAR_ENABLED` is `true`. The `SDK SonarQube` job stays a required
+  check on `main`; without the variable it passes once `SDK checks` passes. Keep
+  LCOV reporting and both required checks.
+- The standalone lint, type-check, `pnpm test:coverage`, build and audit in
+  `SDK checks` remain mandatory. `pnpm test:coverage` fails below 80% overall
+  line coverage of `src/` (`thresholds.lines` in `vitest.config.ts`). It is not
+  a new-code threshold. Do not bypass or weaken gates to land changes. Test
+  doubles should be type-correct without disabling lint or TypeScript rules.
 - Merge the SDK PR before updating the platform's gitlink to the merged commit.
   Link the SDK PR from the platform pointer-update PR, and verify that the pinned
   commit is reachable on the SDK remote and integration checks pass.
